@@ -1,0 +1,4178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Momento</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Momento design language v0.7 */
+    :root {
+      --night: #100A06;          /* Primary text, primary glass */
+      --driftwood: #6F6258;      /* Secondary text */
+      --fill: #EEE7DD;
+      --surface: #FFFFFF;
+      --umber: #6B4E38;          /* Softer CTA over the field */
+      --glass-regular: rgba(255, 255, 255, 0.62);
+      --font-main: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif;
+    }
+
+    html {
+      /* Shown only if WebGL is unavailable */
+      background: linear-gradient(to bottom, #fde3bc 0%, #fbd3a2 25%, #e39250 38%, #3c6e95 55%, #2b5677 64%, #120b07 78%) fixed;
+    }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      font-family: var(--font-main);
+      color: var(--night);
+    }
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+
+    /* Header: nav centred, CTA on the right */
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 2rem 4%;
+      position: fixed;
+      top: 0;
+      width: 100%;
+      box-sizing: border-box;
+      z-index: 100;
+      font-family: var(--font-main);
+    }
+
+    /* Liquid glass, Regular: blur 24px, saturate 180%, 1px white top highlight,
+       0.5px inner rim, no coloured edges. The sheen layer brightens the top and
+       bottom lip like light caught on a curved pane. Shared by the nav and logo. */
+    .glass {
+      --mx: 50%;
+      --my: 0px;
+      --shine: 0;
+      --radius: 100px;
+      --glow-size: 150px;
+      position: relative;
+      border-radius: var(--radius);
+      background:
+        linear-gradient(to bottom,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0) 42%,
+          rgba(255, 255, 255, 0) 62%,
+          rgba(255, 255, 255, 0.18) 100%),
+        var(--glass-regular);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.35),
+        0 0 0 0.5px rgba(16, 10, 6, 0.06),
+        0 2px 6px rgba(16, 10, 6, 0.06),
+        0 12px 32px rgba(16, 10, 6, 0.12);
+    }
+
+    .nav {
+      grid-column: 2;
+      display: flex;
+      touch-action: pan-y;
+      user-select: none;
+      -webkit-user-select: none;
+      gap: 0.25rem;
+      padding: 0.35rem;
+    }
+
+    /* Specular light that follows the pointer: a soft glow on the pane... */
+    .glass::before,
+    .glass::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      opacity: var(--shine);
+      transition: opacity 0.4s ease;
+    }
+
+    /* Halo drifts apricot → tide → apricot, like the brand's scanning glow. Spills
+       14px past the pane so it reads against the field; the rim arc below stays
+       white because floating bars have no coloured edges. */
+    @property --glow {
+      syntax: '<color>';
+      inherits: false;
+      initial-value: rgba(224, 138, 69, 0.38);
+    }
+
+    /* Passes through Cream so warm and cool never average into grey; tide is
+       lightened as it reads through glass, since dark tide smudges the field */
+    @keyframes glow-drift {
+      0%, 100% { --glow: rgba(224, 138, 69, 0.38); }   /* Apricot */
+      25%, 75% { --glow: rgba(249, 214, 168, 0.55); }  /* Cream */
+      50%      { --glow: rgba(150, 184, 214, 0.45); }  /* Tide, seen through glass */
+    }
+
+    .glass::before {
+      inset: -14px;
+      border-radius: calc(var(--radius) + 14px);
+      background: radial-gradient(var(--glow-size) circle at calc(var(--mx) + 14px) calc(var(--my) + 14px),
+        var(--glow), rgba(249, 214, 168, 0.2) 40%, rgba(252, 231, 203, 0) 70%);
+      filter: blur(6px);
+      /* Paused rather than removed off-hover, so the colour never jumps mid-fade */
+      animation: glow-drift 8s ease-in-out infinite paused;
+    }
+
+    .glass.is-lit::before {
+      animation-play-state: running;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .glass::before { animation: none; }
+    }
+
+    /* ...and a bright arc on the rim, masked to the edge only */
+    .glass::after {
+      z-index: 2;
+      padding: 2px;
+      background: radial-gradient(110px circle at var(--mx) var(--my),
+        rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.85) 30%, rgba(255, 255, 255, 0) 75%);
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+    }
+
+    /* Logo: just the glyph and the wordmark in Night, no container, both centred on
+       the nav's centre line and matched in visual weight */
+    .brand {
+      grid-column: 1;
+      justify-self: start;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      height: 2.95rem;   /* the nav's height, so the centre lines meet */
+      color: var(--night);
+      text-decoration: none;
+      border-radius: 10px;
+      -webkit-user-drag: none;
+    }
+
+    .brand-icon {
+      display: grid;
+      place-items: center;
+      flex: none;
+    }
+
+    .brand-icon svg {
+      width: 1.9rem;
+      height: 1.9rem;
+      transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+    }
+
+    .brand:hover .brand-icon svg { transform: scale(1.08) rotate(-4deg); }
+    .brand:active .brand-icon svg { transform: scale(0.94); }
+
+    /* Brand wordmark with the sunset o, on the capsule's centre line */
+    .brand-word {
+      display: block;
+      height: 1.3rem;
+      aspect-ratio: 9217 / 1726;
+      color: var(--night);
+    }
+
+    .brand:focus-visible {
+      outline: 2px solid var(--night);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 900px) {
+      .brand-word { display: none; }
+    }
+
+    /* One selection pill, moved by a spring in the script below */
+    .nav-indicator {
+      position: absolute;
+      top: 0.35rem;
+      bottom: 0.35rem;
+      left: 0;
+      width: 0;
+      z-index: 0;
+      border-radius: 100px;
+      background: var(--surface);
+      box-shadow:
+        inset 0 0 0 0.5px rgba(255, 255, 255, 1),
+        0 1px 2px rgba(16, 10, 6, 0.08),
+        0 4px 12px rgba(16, 10, 6, 0.10);
+      pointer-events: none;
+      will-change: translate, transform, width;
+      transition: background-color 0.25s ease, box-shadow 0.25s ease, scale 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+    }
+
+    /* While held, the pill lifts into a clear glass lens */
+    .nav.is-dragging .nav-indicator {
+      scale: 1.12;
+      background: rgba(255, 255, 255, 0.35);
+      backdrop-filter: blur(2px) saturate(180%);
+      -webkit-backdrop-filter: blur(2px) saturate(180%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.85),
+        0 6px 20px rgba(16, 10, 6, 0.14);
+    }
+
+    .nav-item {
+      position: relative;
+      z-index: 1;
+      color: var(--night);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.6rem 1.2rem;
+      border-radius: 100px;
+      white-space: nowrap;
+      -webkit-user-drag: none;
+      transition: background-color 0.3s ease;
+    }
+
+    .nav:not(.is-dragging) .nav-item:not(.active):hover,
+    .nav-item:not(.active):focus-visible {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .nav-item:focus-visible,
+    .contact-btn:focus-visible {
+      outline: 2px solid var(--night);
+      outline-offset: 2px;
+    }
+
+    .contact-btn {
+      grid-column: 3;
+      justify-self: end;
+      background: var(--umber);
+      color: var(--surface);
+      border: none;
+      padding: 0.9rem 2rem;
+      border-radius: 100px;
+      font-family: var(--font-main);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.3s ease;
+    }
+
+    .contact-btn:hover {
+      background: #5c4230;
+      transform: translateY(-2px);
+    }
+
+    .contact-btn:active {
+      background: #4d3727;
+      transform: translateY(0);
+    }
+
+    /* ---------- Scroll story ---------- */
+
+    /* Height is set by the script from the album timeline */
+    .story {
+      position: relative;
+      height: 900vh;
+    }
+
+    .stage {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      height: 100svh;
+      overflow: hidden;
+      perspective: 2200px;
+      --page-w: min(400px, 40vw, calc((100svh - 230px) / 1.28));
+      --page-h: calc(var(--page-w) * 1.28);
+    }
+
+    /* Hero copy, top left over the light sky */
+    .hero-left {
+      position: absolute;
+      left: 4%;
+      top: calc(7rem + 4vh);
+      z-index: 4;
+      max-width: 30rem;
+    }
+
+    .hero-title {
+      --lh: 0.92em;
+      --base: 0.84;
+      --ink: 0.38;
+      margin: 0;
+      font-size: clamp(3.4rem, 7.4vw, 8rem);
+      line-height: 0.92;
+      font-weight: 700;
+      letter-spacing: -0.045em;
+    }
+
+    /* Pressed ink with a sunrise inside. The element itself only draws the deboss
+       (dark lip above, paper-light catch below); an ::after copy on top carries the
+       fill: Night ink with the afterglow rising from the bottom of every line. The
+       fill tiles once per line (--lh), so each line gets its own horizon. On hover
+       the sun climbs and follows the pointer sideways. */
+    @property --ink {
+      syntax: '<number>';
+      inherits: true;
+      initial-value: 0.3;
+    }
+
+    .ink {
+      --lh: 1.1em;
+      --base: 0.86;
+      --horizon: #FCE7CB;   /* Glow */
+      position: relative;
+      color: transparent;
+      text-shadow:
+        0 -1px 0 rgba(0, 0, 0, 0.4),
+        0 1.5px 0 rgba(255, 246, 232, 0.8),
+        0 2px 7px rgba(255, 246, 232, 0.4);
+      transition: --ink 0.7s ease;
+    }
+
+    .ink::after {
+      content: attr(data-text);
+      position: absolute;
+      top: -0.25em;
+      bottom: -0.25em;
+      left: 0;
+      right: 0;
+      padding-top: 0.25em;
+      white-space: pre-line;
+      text-shadow: none;
+      color: transparent;
+      /* One tile per line: Night above, apricot rising to the horizon colour at the
+         baseline (--base, as a fraction of the line), Night again below it so
+         descenders and the next line's ascenders stay dark. --ink sets how high the
+         sun has risen. */
+      background:
+        linear-gradient(to bottom,
+          var(--night) 0%,
+          var(--night) calc((var(--base) - var(--ink) * 0.62) * 100%),
+          #3A2416 calc((var(--base) - var(--ink) * 0.4) * 100%),
+          #E08A45 calc((var(--base) - var(--ink) * 0.14) * 100%),   /* Apricot */
+          var(--horizon) calc(var(--base) * 100%),
+          #E08A45 calc((var(--base) + 0.05) * 100%),
+          #3A2416 calc((var(--base) + 0.11) * 100%),
+          var(--night) calc((var(--base) + 0.15) * 100%))
+          0 0.25em / 100% var(--lh) repeat-y;
+      -webkit-background-clip: text;
+      background-clip: text;
+      pointer-events: none;
+    }
+
+    .ink:hover { --ink: 0.75; }
+    .hero-title:hover { --ink: 0.8; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ink { transition: none; }
+    }
+
+    /* One short line under the headline, punched into the paper and lit from inside:
+       the whole of every letter glows white, breathing between warm cream and bright
+       white, with light spilling out around it at each peak. A dark lip above and a
+       soft umber shadow below keep the shapes crisp against the apricot band. */
+    @property --pulse {
+      syntax: '<number>';
+      inherits: true;
+      initial-value: 0.45;
+    }
+
+    @keyframes breathe {
+      0%, 100% { --pulse: 0.3; }
+      50%      { --pulse: 0.65; }
+    }
+
+    .hero-copy {
+      margin: 1.6rem 0 0;
+      font-size: clamp(1.25rem, 1.8vw, 1.7rem);
+      line-height: 1.3;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: color-mix(in srgb, #FFFFFF calc(var(--pulse) * 100%), #F7E6CF);
+      animation: breathe 4.5s ease-in-out infinite;
+      text-shadow:
+        0 -1px 0 rgba(60, 36, 20, 0.7),
+        0 1px 2px rgba(107, 78, 56, 0.65),
+        0 0 1px rgba(107, 78, 56, 0.5),
+        0 0 5px rgb(255 255 255 / calc(var(--pulse) * 55%)),
+        0 0 16px rgb(255 250 240 / calc(var(--pulse) * 30%));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero-copy { animation: none; --pulse: 0.7; }
+    }
+
+    /* The single call to action, directly under the copy on the same left edge */
+    /* Shrinks to the slider's width so the hint can centre beneath it */
+    .hero-cta {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 2.25rem;
+    }
+
+    /* Slide to open: a long liquid glass track (same material and height as the nav)
+       with the book as the knob on the left. Drag it right or click it; a white wash
+       follows the knob, and the label fades as it travels. */
+    .slide {
+      --glow-size: 130px;
+      --x: 0px;          /* knob travel, set by the script */
+      --p: 0;            /* 0..1 progress along the track */
+      /* Sized to its content: knob, a short run, the label */
+      display: inline-flex;
+      align-items: center;
+      height: 2.95rem;
+      padding: 0.35rem;
+      box-sizing: border-box;
+      cursor: pointer;
+      touch-action: pan-y;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .slide:focus-visible,
+    .page-cta:focus-visible {
+      outline: 2px solid var(--night);
+      outline-offset: 3px;
+    }
+
+    /* White wash trailing the knob, like the nav's selection stretching open */
+    .slide-fill {
+      position: absolute;
+      top: 0.35rem;
+      bottom: 0.35rem;
+      left: 0.35rem;
+      z-index: 1;
+      width: calc(2.25rem + var(--x));
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0.45);
+      opacity: min(1, calc(var(--p) * 4));
+      pointer-events: none;
+    }
+
+    .slide-label {
+      position: relative;
+      z-index: 1;
+      padding: 0 1.25rem 0 1rem;
+      white-space: nowrap;
+      color: var(--night);
+      font: 600 0.95rem var(--font-main);
+      letter-spacing: -0.005em;
+      opacity: calc(1 - var(--p) * 1.6);
+      pointer-events: none;
+    }
+
+    /* The label carries a slow sheen sweeping toward the end of the track, a quiet
+       hint of which way to slide */
+    .slide-label span {
+      background: linear-gradient(100deg, var(--night) 0%, var(--night) 40%, #8E8278 50%, var(--night) 60%, var(--night) 100%)
+        0 0 / 250% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: sheen 3.2s ease-in-out infinite;
+    }
+
+    @keyframes sheen {
+      0%   { background-position: 100% 0; }
+      70%, 100% { background-position: -50% 0; }
+    }
+
+    .slide-knob {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      flex: none;
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--night);
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.1), 0 4px 12px rgba(16, 10, 6, 0.14);
+      translate: var(--x) 0;
+      cursor: grab;
+      transition: scale 0.3s cubic-bezier(0.34, 1.4, 0.64, 1);
+    }
+
+    .slide:hover .slide-knob { scale: 1.06; }
+    .slide.is-dragging .slide-knob { scale: 1.1; cursor: grabbing; }
+
+    /* Open-book icon: its pages swing apart as the knob travels (and a little on hover) */
+    .slide-knob .page-l,
+    .slide-knob .page-r {
+      transform-box: view-box;
+      transform-origin: 12px 12px;
+      transition: transform 0.45s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+
+    .slide-knob .page-l { transform: rotate(calc(var(--p) * -14deg)) scaleX(calc(1 + var(--p) * 0.1)); }
+    .slide-knob .page-r { transform: rotate(calc(var(--p) * 14deg)) scaleX(calc(1 + var(--p) * 0.1)); }
+    .slide:hover:not(.is-dragging) .page-l { transform: rotate(-6deg) scaleX(1.05); }
+    .slide:hover:not(.is-dragging) .page-r { transform: rotate(6deg) scaleX(1.05); }
+
+    /* Quiet instruction under the track. It falls on the tide band, so it's set in
+       Glow cream with a soft shadow rather than dark ink */
+    .slide-hint {
+      margin: 0.7rem 0 0;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #FCE7CB;
+      text-shadow: 0 1px 2px rgba(16, 10, 6, 0.45);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide-label span { animation: none; color: var(--night); background: none; }
+      .slide-knob .page-l, .slide-knob .page-r { transition: none; }
+    }
+
+    /* Floating photos: drift, parallax and dodge the pointer */
+    .floaters {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .floaters-back { z-index: 0; }
+    .floaters-front { z-index: 3; }
+
+    .floater {
+      position: absolute;
+      width: var(--size);
+      padding: 6px 6px 22px;
+      background: #FCFAF2;
+      border-radius: 3px;
+      box-shadow: 0 2px 4px rgba(16, 10, 6, 0.12), 0 14px 28px rgba(16, 10, 6, 0.22);
+      will-change: transform, opacity;
+    }
+
+    .floater img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: 1px;
+      background: #EEE7DD;
+      filter: sepia(0.14) saturate(0.9) contrast(1.03);
+    }
+
+    /* ---------- Album ---------- */
+
+    .album {
+      position: absolute;
+      left: 50%;
+      top: calc(50% + 2.2rem);
+      z-index: 2;
+      width: var(--page-w);
+      height: var(--page-h);
+      margin-top: calc(var(--page-h) / -2);
+      transform-style: preserve-3d;
+      /* No will-change here: it freezes the raster at the hero's smaller scale and
+         the album then renders soft once it scales up */
+    }
+
+    .leaf,
+    .page-static,
+    .board {
+      position: absolute;
+      inset: 0;
+      transform-origin: 0 50%;
+      transform-style: preserve-3d;
+    }
+
+    /* Boards overhang the pages like a real album cover */
+    .leaf.cover,
+    .board {
+      inset: -10px -12px -10px 0;
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      container-type: size;
+    }
+
+    /* Anti-aliasing for 3D edges: a transparent outline pads each layer's texture,
+       so its visible edge sits inside the texture and gets filtered instead of
+       stair-stepped when rotated */
+    .face,
+    .board,
+    .edge,
+    .thick,
+    .ring {
+      outline: 1px solid transparent;
+    }
+
+    /* Album thickness: a strip hinged on the cover's outer edge and folded back all
+       the way to the back board, so the side reads as one solid edge with no gap
+       between the boards when tilted */
+    .thick {
+      position: absolute;
+      top: 8px;       /* stops short of the rounded corners, so no square ends show */
+      bottom: 8px;
+      right: 0;
+      width: calc((var(--leaves) + 1) * 2px);
+      transform-origin: 100% 50%;
+      transform: rotateY(-90deg);
+      border-radius: 3px;
+      background: linear-gradient(to bottom, #4A3626, #2A1D14 50%, #1A120C);
+      backface-visibility: hidden;
+    }
+
+
+    .face.back {
+      transform: rotateY(180deg);
+    }
+
+    /* Page turn shading, driven per leaf by the script */
+    .leaf .face::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(to right, rgba(16, 10, 6, 0.28), rgba(16, 10, 6, 0.06));
+      opacity: var(--shade-front, 0);
+    }
+
+    .leaf .face.back::after {
+      background: linear-gradient(to left, rgba(16, 10, 6, 0.28), rgba(16, 10, 6, 0.06));
+      opacity: var(--shade-back, 0);
+    }
+
+    /* Heavy album card: light falls from the top left and fades toward the far edge */
+    .paper {
+      background-color: #F8F3EC;   /* Background */
+      background-image:
+        radial-gradient(130% 100% at 25% 0%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%),
+        linear-gradient(to bottom, rgba(16, 10, 6, 0) 75%, rgba(16, 10, 6, 0.04)),
+        var(--paper-grain, none);
+      color: var(--night);
+    }
+
+    /* Gutter shadow by the rings: right pages darken at their left edge, left pages at their right */
+    .face.front.paper { border-radius: 2px 10px 10px 2px; box-shadow: inset 14px 0 18px -12px rgba(16, 10, 6, 0.28); }
+    .face.back.paper { border-radius: 10px 2px 2px 10px; box-shadow: inset -14px 0 18px -12px rgba(16, 10, 6, 0.28); }
+
+    /* Cloth-bound boards: umber linen, lit from above, with a rounded bevel */
+    .board,
+    .cover-back {
+      background:
+        linear-gradient(to bottom, rgba(255, 236, 214, 0.1), rgba(255, 236, 214, 0) 30%, rgba(0, 0, 0, 0.18)),
+        var(--linen, #34251B);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 236, 214, 0.16),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.35);
+    }
+
+    .board {
+      border-radius: 4px 16px 16px 4px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 236, 214, 0.16),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.35),
+        0 2px 4px rgba(16, 10, 6, 0.25),
+        0 24px 50px -10px rgba(16, 10, 6, 0.45);
+    }
+
+    /* Printed cloth cover: the afterglow with the linen weave showing through, a
+       hinge groove by the rings, a varnish sheen across the top and a rounded bevel */
+    .cover-front {
+      border-radius: 4px 16px 16px 4px;
+      background:
+        linear-gradient(to right, rgba(16, 10, 6, 0.38), rgba(16, 10, 6, 0) 6.5%, rgba(255, 255, 255, 0.16) 7.5%, rgba(255, 255, 255, 0) 9.5%),
+        linear-gradient(118deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.06) 28%, rgba(255, 255, 255, 0) 45%),
+        var(--afterglow, #E08A45) center / cover;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -4px 10px rgba(16, 10, 6, 0.35),
+        inset -3px 0 6px rgba(16, 10, 6, 0.2);
+    }
+
+    .cover-front::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--linen-light, none);
+      mix-blend-mode: multiply;
+      opacity: 0.32;
+      pointer-events: none;
+    }
+
+    /* Laid out inside the face so every size is relative to the cover, not the window */
+    .cover-art {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16cqh 0 10cqh;
+      box-sizing: border-box;
+    }
+
+    /* Liquid glass plate on the cover. The afterglow underneath is already blurred,
+       so the plate keeps the material without a costly backdrop blur in 3D. */
+    .cover-plate {
+      display: grid;
+      place-items: center;
+      width: 44cqw;
+      aspect-ratio: 1;
+      border-radius: 22%;
+      background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 45%, rgba(255, 255, 255, 0) 65%, rgba(255, 255, 255, 0.2)),
+        rgba(255, 255, 255, 0.42);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+        0 12px 30px rgba(16, 10, 6, 0.22);
+      color: var(--night);
+    }
+
+    .cover-plate svg {
+      width: 64%;
+      height: 64%;
+    }
+
+    .cover-word {
+      text-align: center;
+      color: #FCE7CB;
+    }
+
+    /* Brand wordmark (sunset o), cream on the night water, debossed into the board */
+    .cover-wordmark {
+      display: block;
+      width: 62cqw;
+      aspect-ratio: 9217 / 1726;
+      margin: 0 auto 2.4cqw;
+      color: #F8F3EC;
+      filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.55)) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.14));
+    }
+
+    .cover-word small {
+      font-size: 3.6cqw;
+      color: #CFC6BC;
+      text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
+    }
+
+    /* The open cover lies to the left of the spine, so its rounded corners are the
+       left ones: the spread is symmetrical about the rings */
+    .cover-back { border-radius: 16px 4px 4px 16px; }
+    .cover-back .paper {
+      position: absolute;
+      inset: 10px 0 10px 12px;
+      border-radius: 10px 2px 2px 10px;
+      box-shadow:
+        inset -14px 0 18px -12px rgba(16, 10, 6, 0.28),
+        -1px 1px 0 #E2D9CE, -2px 2px 0 #F8F3EC, -3px 3px 0 #E2D9CE,
+        -4px 3px 0 #F8F3EC, -5px 4px 0 #D9CFC2, -6px 5px 6px rgba(16, 10, 6, 0.25);
+      container-type: size;
+    }
+
+    /* Page block seen from the side while the album is closed */
+    .edge {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      left: 100%;
+      width: calc(var(--leaves) * 2px + 2px);
+      transform-origin: 0 50%;
+      /* Set 1.5px behind the cover so its front edge never shares the cover's plane
+         (sharing it made the two z-fight into a dotted line) */
+      transform: translateZ(-1.5px) rotateY(90deg);
+      background: repeating-linear-gradient(to right, #F8F3EC 0 1.5px, #E2D9CE 1.5px 2px);
+    }
+
+    /* Spiral binding, as in the logo glyph */
+    .rings {
+      position: absolute;
+      top: 5%;
+      bottom: 5%;
+      left: 0;
+      width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    /* Brushed metal loop: light catches the top edge, a darker band runs through the
+       middle, and the opening shows the shadowed spine behind it */
+    .ring {
+      position: relative;
+      width: calc(var(--page-w) * 0.085);
+      height: calc(var(--page-w) * 0.03);
+      margin-left: calc(var(--page-w) * -0.0425);
+      border-radius: 100px;
+      background: linear-gradient(to bottom, #FDFBF7 0%, #D9D1C6 30%, #8E8278 52%, #CFC6BC 72%, #F4EFE8 100%);
+      box-shadow:
+        0 1.5px 2px rgba(16, 10, 6, 0.45),
+        0 3px 6px rgba(16, 10, 6, 0.2),
+        inset 0 0 0 0.5px rgba(16, 10, 6, 0.35);
+    }
+
+    .ring::after {
+      content: "";
+      position: absolute;
+      inset: 30% 18%;
+      border-radius: 100px;
+      background: rgba(16, 10, 6, 0.62);
+      box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Punched holes the rings pass through; same rhythm as .rings */
+    .holes {
+      position: absolute;
+      top: 5%;
+      bottom: 5%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .holes.left { left: 1.8cqw; }
+    .holes.right { right: 1.8cqw; }
+
+    .holes span {
+      width: 3cqw;
+      height: 3cqw;
+      border-radius: 50%;
+      background: rgba(16, 10, 6, 0.5);
+      box-shadow: inset 0 1px 1.5px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    /* Page block under the open spread: thin alternating edges of the pages below */
+    .album .page-static.face.paper {
+      box-shadow:
+        inset 14px 0 18px -12px rgba(16, 10, 6, 0.28),
+        1px 1px 0 #E2D9CE, 2px 2px 0 #F8F3EC, 3px 3px 0 #E2D9CE,
+        4px 3px 0 #F8F3EC, 5px 4px 0 #D9CFC2, 6px 5px 6px rgba(16, 10, 6, 0.25);
+    }
+
+    /* ---------- Page content ---------- */
+
+    .page {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10cqw 10cqw 9cqw;
+      box-sizing: border-box;
+    }
+
+    /* Everything printed on the page is debossed into the card: a faint dark lip
+       above each letter and a white catch below */
+    .page-no,
+    .page h2,
+    .page p,
+    .photo figcaption {
+      text-shadow: 0 -0.5px 0 rgba(16, 10, 6, 0.25), 0 1px 0 rgba(255, 255, 255, 0.85);
+    }
+
+    .page-no {
+      font-size: 3.4cqw;
+      font-weight: 600;
+      color: #8E8278;   /* Stone */
+      font-variant-numeric: tabular-nums;
+    }
+
+    .page h2 {
+      margin: 2.5cqw 0 0;
+      font-size: 8.4cqw;
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--night);
+    }
+
+    .page p {
+      margin: 3.5cqw 0 0;
+      font-size: 4.1cqw;
+      line-height: 1.55;
+      color: var(--driftwood);
+    }
+
+    /* Sunset capsule: cream sky into apricot, a glossy top highlight and a soft
+       apricot halo; brightens and lifts on hover */
+    .page-cta {
+      align-self: flex-start;
+      margin-top: 6cqw;
+      padding: 3.2cqw 6.4cqw;
+      border: none;
+      border-radius: 100px;
+      background: linear-gradient(to bottom, #FCE7CB 0%, #F9D6A8 30%, #E08A45 100%);
+      color: var(--night);
+      font: 700 3.8cqw var(--font-main);
+      cursor: pointer;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        inset 0 -1px 2px rgba(107, 78, 56, 0.35),
+        0 1px 2px rgba(107, 78, 56, 0.3),
+        0 6px 16px rgba(224, 138, 69, 0.35);
+      transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.3s ease, filter 0.3s ease;
+    }
+
+    .page-cta:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05) saturate(1.1);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        inset 0 -1px 2px rgba(107, 78, 56, 0.35),
+        0 1px 2px rgba(107, 78, 56, 0.3),
+        0 10px 26px rgba(224, 138, 69, 0.55);
+    }
+
+    .page-cta:active { transform: translateY(0) scale(0.98); }
+
+    /* Photo slots, placed by hand per page like a scrapbook. Positions are % of the
+       page; three mounts: umber corners, washi tape, or a polaroid frame. */
+    .collage {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .photo {
+      position: absolute;
+      margin: 0;
+      rotate: var(--rot, 0deg);
+    }
+
+    .photo-frame {
+      position: relative;
+      padding: 1.4cqw;
+      background: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.14), 0 8px 18px rgba(16, 10, 6, 0.12);
+    }
+
+    /* A warm film tone so mixed sources sit together on the page */
+    .photo img {
+      display: block;
+      width: 100%;
+      aspect-ratio: var(--ratio);
+      object-fit: cover;
+      background: #EEE7DD;
+      filter: sepia(0.14) saturate(0.9) contrast(1.03);
+    }
+
+    .photo figcaption {
+      margin-top: 1.8cqw;
+      font-size: 3cqw;
+      color: var(--driftwood);
+      text-align: center;
+    }
+
+    .mount-polaroid .photo-frame { padding: 2.4cqw 2.4cqw 0; }
+    .mount-polaroid figcaption { margin: 0; padding: 2.2cqw 0 2.8cqw; }
+
+    .mount-tape .photo-frame::before {
+      content: "";
+      position: absolute;
+      top: -2.6cqw;
+      left: 50%;
+      z-index: 1;
+      width: 40%;
+      height: 5.6cqw;
+      translate: -50% 0;
+      rotate: -4deg;
+      background: rgba(249, 214, 168, 0.8);   /* Cream tape */
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.1);
+    }
+
+    .mount-corners .photo-frame::after {
+      --c: var(--umber);
+      --m: 5cqw;
+      content: "";
+      position: absolute;
+      inset: -1cqw;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, var(--c) 50%, transparent 50%) top left / var(--m) var(--m) no-repeat,
+        linear-gradient(225deg, var(--c) 50%, transparent 50%) top right / var(--m) var(--m) no-repeat,
+        linear-gradient(45deg, var(--c) 50%, transparent 50%) bottom left / var(--m) var(--m) no-repeat,
+        linear-gradient(315deg, var(--c) 50%, transparent 50%) bottom right / var(--m) var(--m) no-repeat;
+    }
+
+    /* Each spread writes itself in when its page lands */
+    .reveal {
+      opacity: 0;
+      translate: 0 2.5cqw;
+      transition: opacity 0.6s ease, translate 0.7s cubic-bezier(0.34, 1.3, 0.64, 1);
+      transition-delay: calc(var(--i, 0) * 90ms);
+    }
+
+    .is-read .reveal {
+      opacity: 1;
+      translate: 0 0;
+    }
+
+
+    /* Real refraction (Chromium): the script swaps in an SVG lens filter. The tint
+       drops to the brand's Ultra thin so the bending behind the bar stays visible. */
+    .nav.is-refracting,
+    .slide.is-refracting {
+      --glass-regular: rgba(255, 255, 255, 0.35);
+    }
+
+    @media (max-width: 900px) {
+      .hero-left { max-width: 80%; }
+      .stage { --page-w: min(400px, 44vw, calc((100svh - 230px) / 1.28)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { translate: none; transition: opacity 0.3s ease; }
+    }
+
+    /* ---------- Album dissolve and section transitions ---------- */
+
+    /* Shut: only the cover paints, so fading the book can't flash the inside pages */
+    .album.is-shut .leaf:not(.cover),
+    .album.is-shut .page-static { visibility: hidden; }
+
+    .shard {
+      position: absolute;
+      left: 50%;
+      top: calc(50% + 2.2rem);
+      z-index: 3;
+      width: var(--w);
+      padding: 5px 5px 16px;
+      background: #FCFAF2;
+      border-radius: 3px;
+      box-shadow: 0 2px 4px rgba(16, 10, 6, 0.12), 0 14px 28px rgba(16, 10, 6, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      will-change: transform, opacity;
+    }
+
+    .shard img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      filter: sepia(0.14) saturate(0.9) contrast(1.03);
+    }
+
+    /* Moving between sections from the nav: the page diffuses out, jumps, and the
+       destination sharpens back in */
+    .stage,
+    .hiw-sticky,
+    .feat {
+      transition: filter 0.45s ease, opacity 0.45s ease, scale 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    body.is-diffusing .stage,
+    body.is-diffusing .hiw-sticky,
+    body.is-diffusing .feat {
+      filter: blur(18px);
+      opacity: 0;
+      scale: 0.97;
+    }
+
+    /* Past the hero, a soft glow sits behind the logo only, so it reads over the
+       panels without hiding the field */
+    .brand { position: relative; }
+
+    .brand::before {
+      content: "";
+      position: absolute;
+      inset: -1rem -1.75rem;
+      z-index: -1;
+      border-radius: 50%;
+      background: radial-gradient(closest-side, rgba(248, 243, 236, 0.95), rgba(248, 243, 236, 0.7) 55%, rgba(248, 243, 236, 0));
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+
+    .header.is-veiled .brand::before { opacity: 1; }
+
+    /* ---------- Reading controls ---------- */
+
+    /* Grab zones over the outer edge of each open page */
+    .page-grip {
+      position: absolute;
+      top: calc(50% + 2.2rem - var(--page-h) / 2);
+      z-index: 4;
+      width: 72px;
+      height: var(--page-h);
+      cursor: grab;
+      touch-action: none;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .page-grip.prev { left: calc(50% - var(--page-w)); }
+    .page-grip.next { left: calc(50% + var(--page-w) - 72px); }
+    .stage.is-reading .page-grip { opacity: 1; pointer-events: auto; }
+    .stage.is-turning .page-grip { cursor: grabbing; }
+
+    /* A soft curl of shadow at the corner and a hand, shown when the edge is hovered */
+    .page-grip::before {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      width: 72px;
+      height: 72px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .page-grip.next::before { right: 0; border-radius: 0 0 10px 0; background: linear-gradient(135deg, rgba(16, 10, 6, 0) 50%, rgba(16, 10, 6, 0.1) 70%, rgba(255, 255, 255, 0.9) 71%, #EEE7DD 100%); }
+    .page-grip.prev::before { left: 0; border-radius: 0 0 0 10px; background: linear-gradient(225deg, rgba(16, 10, 6, 0) 50%, rgba(16, 10, 6, 0.1) 70%, rgba(255, 255, 255, 0.9) 71%, #EEE7DD 100%); }
+
+    .grip-hint {
+      position: absolute;
+      top: 50%;
+      display: grid;
+      place-items: center;
+      width: 2.4rem;
+      height: 2.4rem;
+      margin-top: -1.2rem;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--night);
+      box-shadow: 0 2px 8px rgba(16, 10, 6, 0.2);
+      opacity: 0;
+      scale: 0.8;
+      transition: opacity 0.3s ease, scale 0.35s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+
+    .grip-hint svg { width: 20px; height: 20px; }
+    .page-grip.next .grip-hint { right: 0.9rem; }
+    .page-grip.prev .grip-hint { left: 0.9rem; }
+    .page-grip:hover::before,
+    .page-grip:hover .grip-hint,
+    .stage.is-turning .page-grip .grip-hint { opacity: 1; scale: 1; }
+
+    /* Arrows under the open album */
+    .page-arrows {
+      position: absolute;
+      left: 50%;
+      top: calc(50% + 2.2rem + var(--page-h) / 2 + 1.2rem);
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+      translate: -50% 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .stage.is-reading .page-arrows { opacity: 1; pointer-events: auto; }
+
+    .pa {
+      display: grid;
+      place-items: center;
+      width: 2.6rem;
+      height: 2.6rem;
+      border: none;
+      color: var(--night);
+      cursor: pointer;
+      transition: scale 0.3s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+
+    .pa svg { position: relative; z-index: 1; }
+    .pa:hover { scale: 1.08; }
+    .pa:active { scale: 0.94; }
+    .pa:focus-visible { outline: 2px solid #FCE7CB; outline-offset: 3px; }
+
+    .pa-count {
+      min-width: 4.5rem;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #FCE7CB;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 1px 2px rgba(16, 10, 6, 0.5);
+    }
+
+    /* ---------- Sections after the album ---------- */
+
+    /* Floating panel in liquid glass: a dense, frosted body (so the field only glows
+       through, never shows through), a sheen across the top, light pooling just inside
+       the edges, and a specular rim that's brightest at the top-left and bottom-right */
+    .panel {
+      position: relative;
+      border-radius: 36px;
+      background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.12) 16%, rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0) 82%, rgba(255, 255, 255, 0.18)),
+        rgba(250, 246, 240, 0.92);
+      backdrop-filter: blur(44px) saturate(140%);
+      -webkit-backdrop-filter: blur(44px) saturate(140%);
+      box-shadow:
+        inset 0 1.5px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 0 32px rgba(255, 255, 255, 0.45),
+        0 0 0 0.5px rgba(16, 10, 6, 0.1),
+        0 2px 6px rgba(16, 10, 6, 0.08),
+        0 40px 90px -30px rgba(16, 10, 6, 0.55);
+    }
+
+    .panel::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1.5px;
+      background: linear-gradient(135deg, #FFFFFF 0%, rgba(255, 255, 255, 0.25) 28%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.3) 75%, rgba(255, 255, 255, 0.95) 100%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* Type on the glass is pressed in, like the album pages */
+    .panel :is(.section-lede, .step-body b, .step-more > span, .zone-ctrl label, .zone-ctrl output,
+      .zone-count, .zone-note, .feat-item h3, .feat-item p, .host-controls b, .host-controls small,
+      .qa button span, .qa-a p),
+    .plan:not(.plan-plus) :is(h3, .plan-price, li) {
+      text-shadow: 0 -0.5px 0 rgba(16, 10, 6, 0.24), 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+
+    .step-no { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8); }
+    .step.is-on .step-no { text-shadow: none; }
+
+    /* Panels float up into place as they arrive */
+    .rise-in {
+      opacity: 0;
+      translate: 0 80px;
+      scale: 0.96;
+      transition: opacity 0.9s ease, translate 1.2s cubic-bezier(0.2, 0.8, 0.2, 1), scale 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .rise-in.is-in { opacity: 1; translate: 0 0; scale: 1; }
+
+    .section-title {
+      --lh: 1em;
+      --base: 0.86;
+      margin: 0;
+      font-size: clamp(2.4rem, 4.4vw, 4.2rem);
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    .section-lede {
+      margin: 1.1rem 0 0;
+      max-width: 30rem;
+      font-size: 1.08rem;
+      line-height: 1.55;
+      color: var(--driftwood);
+    }
+
+    /* ----- How it works ----- */
+
+    /* Overlaps the album's last screen, so the panel floats up as the closed book
+       lifts away, then holds while five steps of scroll play out */
+    .hiw {
+      position: relative;
+      z-index: 3;
+      height: 420vh;
+      margin-top: -100vh;
+    }
+
+    .hiw-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: 6.5rem 4% 2rem;
+      box-sizing: border-box;
+    }
+
+    .hiw-panel {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: clamp(2rem, 5vw, 5rem);
+      width: min(1180px, 100%);
+      height: 100%;
+      max-height: 720px;
+      padding: clamp(2rem, 4vw, 3.75rem);
+      box-sizing: border-box;
+    }
+
+    .steps {
+      list-style: none;
+      margin: 2.2rem 0 0;
+      padding: 0;
+      position: relative;
+    }
+
+    /* Progress rail beside the steps */
+    .steps::before,
+    .steps::after {
+      content: "";
+      position: absolute;
+      left: 1.05rem;
+      top: 0.9rem;
+      bottom: 0.9rem;
+      width: 2px;
+      border-radius: 2px;
+      background: rgba(16, 10, 6, 0.1);
+    }
+
+    .steps::after {
+      background: linear-gradient(to bottom, #F9D6A8, #E08A45);
+      transform-origin: top;
+      scale: 1 var(--rail, 0);
+      transition: scale 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .step button {
+      display: flex;
+      gap: 1.1rem;
+      width: 100%;
+      padding: 0.55rem 0;
+      border: none;
+      background: none;
+      color: var(--night);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .step button:focus-visible { outline: 2px solid var(--night); outline-offset: 2px; border-radius: 12px; }
+
+    .step-no {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      flex: none;
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 50%;
+      background: #F8F3EC;
+      box-shadow: inset 0 0 0 1.5px rgba(16, 10, 6, 0.14);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #8E8278;
+      font-variant-numeric: tabular-nums;
+      transition: background-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, scale 0.4s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+
+    .step.is-done .step-no { background: #F9D6A8; color: var(--night); box-shadow: none; }
+    .step.is-on .step-no {
+      background: var(--night);
+      color: #FCE7CB;
+      box-shadow: 0 0 0 5px rgba(224, 138, 69, 0.22);
+      scale: 1.08;
+    }
+
+    .step-body {
+      display: flex;
+      flex-direction: column;
+      padding-top: 0.35rem;
+    }
+
+    .step-body b {
+      font-size: 1.12rem;
+      font-weight: 650;
+      letter-spacing: -0.015em;
+      color: rgba(16, 10, 6, 0.5);
+      transition: color 0.4s ease;
+    }
+
+    .step.is-on .step-body b,
+    .step button:hover .step-body b { color: var(--night); }
+
+    /* The description opens under the active step */
+    .step-more {
+      display: grid;
+      grid-template-rows: 0fr;
+      opacity: 0;
+      transition: grid-template-rows 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease;
+    }
+
+    .step-more > span {
+      overflow: hidden;
+      max-width: 27rem;
+      font-size: 0.98rem;
+      line-height: 1.55;
+      color: var(--driftwood);
+    }
+
+    .step.is-on .step-more { grid-template-rows: 1fr; opacity: 1; }
+    .step.is-on .step-more > span { padding-top: 0.4rem; }
+
+    /* Phone, scaled to fit the panel by the script (--s) */
+    .phone-wrap {
+      width: calc(270px * var(--s, 1));
+      height: calc(556px * var(--s, 1));
+    }
+
+    .phone {
+      width: 270px;
+      height: 556px;
+      padding: 9px;
+      box-sizing: border-box;
+      border-radius: 46px;
+      background: linear-gradient(145deg, #3A2A1E, #100A06 46%, #2A1D14);
+      box-shadow:
+        inset 0 0 0 1.5px rgba(255, 236, 214, 0.18),
+        0 2px 4px rgba(16, 10, 6, 0.3),
+        0 40px 70px -24px rgba(16, 10, 6, 0.55);
+      transform-origin: top left;
+      scale: var(--s, 1);
+    }
+
+    .phone-screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 37px;
+      background:
+        radial-gradient(120% 60% at 50% 0%, #FCE7CB, rgba(252, 231, 203, 0) 70%),
+        #F8F3EC;
+      color: var(--night);
+      font-size: 12px;
+    }
+
+    .island {
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      z-index: 5;
+      width: 84px;
+      height: 24px;
+      translate: -50% 0;
+      border-radius: 14px;
+      background: #000;
+    }
+
+    /* Each step's screen; the active one slides in, the rest wait off to the side */
+    .scr {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 46px 16px 18px;
+      opacity: 0;
+      translate: 24px 0;
+      scale: 0.97;
+      transition: opacity 0.45s ease, translate 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), scale 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+      pointer-events: none;
+    }
+
+    .scr.is-on { opacity: 1; translate: 0 0; scale: 1; }
+    .scr.is-past { translate: -24px 0; }
+
+    /* Animations inside a screen only run while it's showing */
+    .scr * { animation-play-state: paused !important; }
+    .scr.is-on * { animation-play-state: running !important; }
+
+    .app-top { display: flex; flex-direction: column; gap: 1px; }
+    .app-top small { font-size: 11px; color: #8E8278; font-weight: 500; }
+    .app-top b { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; }
+
+    .app-btn {
+      margin-top: auto;
+      display: grid;
+      place-items: center;
+      height: 40px;
+      border-radius: 20px;
+      background: var(--night);
+      color: #FCE7CB;
+      font-weight: 600;
+      font-size: 12.5px;
+      box-shadow: 0 6px 14px -6px rgba(16, 10, 6, 0.5);
+    }
+
+    .app-note { margin: auto 0 0; text-align: center; font-size: 11px; color: #8E8278; }
+    .app-label { font-size: 11px; font-weight: 600; color: #8E8278; }
+
+    /* 01: map with a sharing zone that the host drags out */
+    .app-map {
+      position: relative;
+      height: 168px;
+      overflow: hidden;
+      border-radius: 20px;
+      background: #EEE7DD;
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+
+    .app-map svg:first-child { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .app-zone {
+      position: absolute;
+      left: 50%;
+      top: 52%;
+      width: 132px;
+      height: 132px;
+      margin: -66px 0 0 -66px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(224, 138, 69, 0.28), rgba(224, 138, 69, 0.12) 70%);
+      box-shadow: inset 0 0 0 2px #E08A45;
+      animation: zone-drag 3.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+    }
+
+    @keyframes zone-drag {
+      0%   { scale: 0.45; }
+      45%, 80% { scale: 1; }
+      100% { scale: 0.45; }
+    }
+
+    .app-pin { position: absolute; left: 50%; top: 52%; width: 28px; height: 28px; margin: -26px 0 0 -14px; }
+
+    .app-tag {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      padding: 4px 9px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.85);
+      font-weight: 700;
+      font-size: 11px;
+      box-shadow: 0 2px 6px rgba(16, 10, 6, 0.1);
+    }
+
+    .app-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .app-chips span {
+      padding: 6px 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.7);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.08);
+      font-weight: 600;
+      font-size: 11px;
+    }
+    .app-chips .on { background: var(--night); color: #FCE7CB; box-shadow: none; }
+
+    .app-chips span { padding: 5px 9px; font-size: 10.5px; }
+
+    /* Settings card on the create screen */
+    .app-card {
+      display: flex;
+      flex-direction: column;
+      padding: 2px 12px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+    .app-li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 11.5px; }
+    .app-li + .app-li { box-shadow: inset 0 1px 0 rgba(16, 10, 6, 0.06); }
+    .app-li span { color: #6F6258; }
+    .app-li b { font-size: 11.5px; }
+
+    .mini-sw { position: relative; width: 30px; height: 18px; border-radius: 9px; background: rgba(16, 10, 6, 0.15); }
+    .mini-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(16, 10, 6, 0.25); }
+    .mini-sw.on { background: linear-gradient(to right, #F9D6A8, #E08A45); }
+    .mini-sw.on::after { translate: 12px 0; }
+
+    /* Stack of guest faces with a line of text */
+    .app-faces { display: flex; align-items: center; gap: 10px; }
+    .faces { display: flex; padding-left: 7px; }
+    .faces img { width: 26px; height: 26px; margin-left: -7px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px #F8F3EC; }
+    .app-faces > span:last-child { display: flex; flex-direction: column; }
+    .app-faces b { font-size: 11.5px; }
+    .app-faces small { font-size: 10px; color: #8E8278; }
+
+    .app-actions { display: flex; gap: 6px; }
+    .app-actions span {
+      flex: 1;
+      padding: 8px 0;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+      font-size: 10.5px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .app-actions span:first-child { background: var(--night); color: #FCE7CB; box-shadow: none; }
+
+    .app-event.is-far { opacity: 0.6; }
+    .app-event.is-far img { filter: grayscale(1); }
+    .app-event.is-far i { background: rgba(16, 10, 6, 0.08); color: #6F6258; }
+
+    /* Upload summary with an overall progress bar */
+    .app-sum {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px 14px;
+      border-radius: 16px;
+      background: var(--night);
+      color: #FCE7CB;
+      overflow: hidden;
+    }
+    .app-sum span { display: flex; flex-direction: column; flex: 1; }
+    .app-sum b { font-size: 12px; }
+    .app-sum small { font-size: 10px; color: #CFC6BC; }
+    .app-sum i { font-style: normal; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 9px; background: rgba(252, 231, 203, 0.16); }
+    .app-sum em { position: absolute; left: 12px; right: 12px; bottom: 6px; height: 3px; border-radius: 2px; background: rgba(252, 231, 203, 0.2); overflow: hidden; }
+    .app-sum em::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to right, #F9D6A8, #E08A45); transform-origin: left; animation: total 6s ease-in-out infinite alternate; }
+    @keyframes total { from { scale: 0.22 1; } to { scale: 0.42 1; } }
+
+    .app-uploads li { padding: 6px 8px; }
+    .app-uploads img { width: 36px; height: 36px; }
+
+    /* 02: QR code with a scanning beam */
+    .app-qr {
+      position: relative;
+      align-self: center;
+      width: 150px;
+      height: 150px;
+      margin-top: 2px;
+      padding: 12px;
+      box-sizing: border-box;
+      border-radius: 22px;
+      background: #FFFFFF;
+      box-shadow: 0 10px 24px -10px rgba(16, 10, 6, 0.35);
+      overflow: hidden;
+    }
+
+    .qr { display: block; width: 100%; height: 100%; }
+
+    .scan-line {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 14px;
+      height: 2px;
+      border-radius: 2px;
+      background: #E08A45;
+      box-shadow: 0 0 14px 4px rgba(224, 138, 69, 0.55);
+      animation: scan 2.2s ease-in-out infinite alternate;
+    }
+
+    @keyframes scan { to { top: calc(100% - 16px); } }
+
+    .app-code { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+    .app-code span {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 38px;
+      border-radius: 10px;
+      background: #FFFFFF;
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.1);
+      font-size: 17px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      animation: code-pop 2.4s ease-in-out infinite;
+    }
+    .app-code span:nth-child(2) { animation-delay: 0.12s; }
+    .app-code span:nth-child(3) { animation-delay: 0.24s; }
+    .app-code span:nth-child(4) { animation-delay: 0.36s; }
+    .app-code span:nth-child(5) { animation-delay: 0.48s; }
+    .app-code span:nth-child(6) { animation-delay: 0.6s; }
+
+    @keyframes code-pop {
+      0%, 60%, 100% { translate: 0 0; }
+      30% { translate: 0 -3px; }
+    }
+
+    /* 03: radar finding the album nearby */
+    .app-radar {
+      position: relative;
+      height: 150px;
+      overflow: hidden;
+      border-radius: 22px;
+      background: radial-gradient(circle at 50% 55%, #FFFFFF, rgba(255, 255, 255, 0) 72%);
+    }
+
+    .app-radar .rg {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      width: var(--s);
+      aspect-ratio: 1;
+      translate: -50% -50%;
+      border-radius: 50%;
+      border: 1px dashed rgba(63, 106, 142, 0.35);
+    }
+
+    .app-radar .sweep {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      width: 300px;
+      height: 300px;
+      margin: -150px 0 0 -150px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, transparent 0 290deg, rgba(224, 138, 69, 0.55) 360deg);
+      -webkit-mask: radial-gradient(circle, #000 55%, transparent 71%);
+      mask: radial-gradient(circle, #000 55%, transparent 71%);
+      animation: spin 4s linear infinite;
+    }
+
+    @keyframes spin { to { rotate: 360deg; } }
+
+    .app-radar .me {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      width: 14px;
+      height: 14px;
+      margin: -7px 0 0 -7px;
+      border-radius: 50%;
+      background: linear-gradient(#F9D6A8, #E08A45);
+      box-shadow: 0 0 0 3px #FFFFFF, 0 3px 8px rgba(107, 78, 56, 0.4);
+    }
+
+    .app-radar .me::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 2px solid #E08A45;
+      animation: ping 2s ease-out infinite;
+    }
+
+    @keyframes ping { to { scale: 3.2; opacity: 0; } }
+
+    .blip {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      translate: calc(-50% + var(--x)) calc(-50% + var(--y));
+      animation: blip-in 4s ease-out infinite;
+    }
+
+    .blip img {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      object-fit: cover;
+      box-shadow: 0 0 0 2px #FFFFFF, 0 5px 12px -3px rgba(16, 10, 6, 0.35);
+    }
+
+    .blip small {
+      padding: 1px 6px;
+      border-radius: 7px;
+      background: #FFFFFF;
+      font-size: 9.5px;
+      font-weight: 700;
+    }
+
+    .blip.far { opacity: 0.55; animation-delay: 0.6s; }
+    .blip.far img { filter: grayscale(1); }
+
+    @keyframes blip-in {
+      0%, 10% { scale: 0.6; opacity: 0; }
+      22%, 100% { scale: 1; opacity: var(--o, 1); }
+    }
+    .blip.far { --o: 0.55; }
+
+    .app-event {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+
+    .app-event img { width: 38px; height: 38px; border-radius: 11px; object-fit: cover; }
+    .app-event span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .app-event b { font-size: 12.5px; }
+    .app-event small { font-size: 10px; color: #8E8278; }
+    .app-event i {
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: 9px;
+      background: rgba(224, 138, 69, 0.18);
+      color: #6B4E38;
+    }
+
+    /* 04: uploads filling one after another */
+    .app-uploads { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+    .app-uploads li {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+    .app-uploads img { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
+    .app-uploads span { display: flex; flex-direction: column; flex: 1; gap: 1px; }
+    .app-uploads b { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .app-uploads small { font-size: 10px; color: #8E8278; }
+    .app-uploads i {
+      display: block;
+      height: 4px;
+      margin-top: 4px;
+      border-radius: 2px;
+      background: rgba(16, 10, 6, 0.08);
+      overflow: hidden;
+      position: relative;
+    }
+    .app-uploads i::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(to right, #F9D6A8, #E08A45);
+      transform-origin: left;
+      animation: upload 4s cubic-bezier(0.45, 0, 0.2, 1) var(--d) infinite;
+      scale: 0 1;
+    }
+
+    @keyframes upload {
+      0% { scale: 0 1; }
+      55%, 100% { scale: 1 1; }
+    }
+
+    /* 05: albums floating as glass windows */
+    .app-windows { position: relative; flex: 1; }
+    .win {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: 64%;
+      padding: 7px 7px 8px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: inset 0 1px 0 #FFFFFF, inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 12px 24px -12px rgba(16, 10, 6, 0.4);
+      rotate: var(--r);
+      animation: drift 6s ease-in-out var(--d) infinite;
+    }
+    .win-pics { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; height: 70px; margin-bottom: 6px; }
+    .win-pics img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+    .win-pics img:first-child { grid-row: 1 / 3; }
+    .win b { display: block; font-size: 11px; }
+    .win small { font-size: 9.5px; color: #8E8278; }
+
+    @keyframes drift {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 6px -8px; }
+    }
+
+    .app-saved {
+      align-self: center;
+      padding: 7px 14px 7px 30px;
+      border-radius: 16px;
+      background: var(--night);
+      color: #FCE7CB;
+      font-weight: 600;
+      font-size: 11.5px;
+      position: relative;
+    }
+    .app-saved::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      width: 10px;
+      height: 5px;
+      margin-top: -4px;
+      border-left: 2px solid #F9D6A8;
+      border-bottom: 2px solid #F9D6A8;
+      rotate: -45deg;
+    }
+
+    /* ----- Features ----- */
+
+    .feat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 10vh 4% 16vh;
+    }
+
+    .zone-panel {
+      display: grid;
+      grid-template-columns: 1fr minmax(0, 1.05fr);
+      align-items: center;
+      gap: clamp(2rem, 5vw, 4.5rem);
+      width: min(1180px, 100%);
+      padding: clamp(2rem, 4vw, 3.75rem);
+      box-sizing: border-box;
+    }
+
+    .zone-ctrl {
+      margin-top: 2rem;
+      padding: 1.1rem 1.25rem 1.2rem;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.6);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+
+    .zone-ctrl-top { display: flex; justify-content: space-between; align-items: baseline; }
+    .zone-ctrl label { font-weight: 600; }
+    .zone-ctrl output { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+
+    /* Range slider: apricot fill up to the thumb, white knob like the nav pill */
+    .zone-ctrl input {
+      --fill: 40%;
+      width: 100%;
+      height: 6px;
+      margin: 0.9rem 0 0.8rem;
+      border-radius: 3px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: linear-gradient(to right, #E08A45 var(--fill), rgba(16, 10, 6, 0.12) var(--fill));
+      cursor: pointer;
+    }
+
+    .zone-ctrl input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.2), 0 4px 12px rgba(16, 10, 6, 0.2);
+      transition: scale 0.25s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+
+    .zone-ctrl input:active::-webkit-slider-thumb { scale: 1.15; }
+
+    .zone-ctrl input::-moz-range-thumb {
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.2), 0 4px 12px rgba(16, 10, 6, 0.2);
+    }
+
+    .zone-ctrl input:focus-visible { outline: 2px solid var(--night); outline-offset: 6px; }
+
+    .zone-count { margin: 0; color: var(--driftwood); }
+    .zone-count b { color: var(--night); font-size: 1.1rem; }
+
+    .zone-note { margin: 1.2rem 0 0; max-width: 28rem; font-size: 0.92rem; line-height: 1.55; color: #8E8278; }
+
+    /* The map: a ring that follows the slider, guests lighting up as it reaches them */
+    .zone-map {
+      --r: 74px;
+      position: relative;
+      aspect-ratio: 1;
+      width: 100%;
+      max-width: 460px;
+      justify-self: center;
+      overflow: hidden;
+      border-radius: 32px;
+      background: #EEE7DD;
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06), 0 20px 40px -20px rgba(16, 10, 6, 0.35);
+      container-type: inline-size;
+    }
+
+    .zone-streets { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .zone-ring,
+    .zone-ping {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: calc(var(--r) * 2);
+      aspect-ratio: 1;
+      translate: -50% -50%;
+      border-radius: 50%;
+    }
+
+    .zone-ring {
+      background: radial-gradient(circle, rgba(224, 138, 69, 0.3), rgba(224, 138, 69, 0.12) 72%);
+      box-shadow: inset 0 0 0 2px #E08A45, 0 0 40px rgba(224, 138, 69, 0.25);
+      transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .zone-ping {
+      box-shadow: inset 0 0 0 2px rgba(224, 138, 69, 0.6);
+      animation: zone-ping 3s ease-out infinite;
+      transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    @keyframes zone-ping {
+      0% { scale: 0.2; opacity: 0.9; }
+      100% { scale: 1; opacity: 0; }
+    }
+
+    .zone-pin { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -33px 0 0 -18px; filter: drop-shadow(0 4px 6px rgba(16, 10, 6, 0.35)); }
+
+    .guest {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 34px;
+      height: 34px;
+      margin: -17px 0 0 -17px;
+      translate: var(--gx) var(--gy);
+      border-radius: 50%;
+      background: center / cover;
+      box-shadow: 0 0 0 2.5px #FFFFFF, 0 6px 14px -4px rgba(16, 10, 6, 0.4);
+      filter: grayscale(1);
+      opacity: 0.5;
+      scale: 0.88;
+      transition: filter 0.4s ease, opacity 0.4s ease, scale 0.45s cubic-bezier(0.34, 1.5, 0.64, 1), box-shadow 0.4s ease;
+    }
+
+    .guest.is-in {
+      filter: none;
+      opacity: 1;
+      scale: 1;
+      box-shadow: 0 0 0 2.5px #FFFFFF, 0 0 0 5px #E08A45, 0 6px 14px -4px rgba(16, 10, 6, 0.4);
+    }
+
+    .guest small {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 6px);
+      translate: -50% 0;
+      padding: 1px 6px;
+      border-radius: 7px;
+      background: #FFFFFF;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+      color: #6B4E38;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .guest:not(.is-in) small { opacity: 1; }
+
+    /* Supporting features: one panel, four columns divided by hairlines */
+    .feat-list {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: min(1180px, 100%);
+      padding: 0.5rem;
+      box-sizing: border-box;
+    }
+
+    .feat-item {
+      padding: 2rem 1.75rem 2.1rem;
+    }
+
+    .feat-item + .feat-item { box-shadow: inset 1px 0 0 rgba(16, 10, 6, 0.08); }
+
+    .feat-item svg {
+      width: 2.6rem;
+      height: 2.6rem;
+      padding: 0.55rem;
+      box-sizing: border-box;
+      border-radius: 14px;
+      background: linear-gradient(#FCE7CB, #F9D6A8);
+      color: var(--night);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 10px -4px rgba(107, 78, 56, 0.4);
+    }
+
+    .feat-item h3 { margin: 1.1rem 0 0; font-size: 1.08rem; font-weight: 700; letter-spacing: -0.02em; }
+    .feat-item p { margin: 0.5rem 0 0; font-size: 0.93rem; line-height: 1.55; color: var(--driftwood); }
+
+    /* Section seam: a hairline draws out from the middle and the section's name
+       settles onto it, marking the move from one section to the next */
+    .seam {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: min(1180px, 100%);
+      height: 4.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .seam::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 1px;
+      background: linear-gradient(to right, rgba(252, 231, 203, 0), rgba(252, 231, 203, 0.75) 25%, rgba(252, 231, 203, 0.75) 75%, rgba(252, 231, 203, 0));
+      scale: 0 1;
+      transition: scale 1.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .seam span {
+      position: relative;
+      padding: 0.5rem 1.15rem;
+      border-radius: 100px;
+      background: rgba(248, 243, 236, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: inset 0 1px 0 #FFFFFF, 0 8px 20px -8px rgba(16, 10, 6, 0.45);
+      font-size: 0.85rem;
+      font-weight: 650;
+      color: var(--night);
+      opacity: 0;
+      translate: 0 12px;
+      transition: opacity 0.7s ease 0.35s, translate 0.8s cubic-bezier(0.34, 1.4, 0.64, 1) 0.35s;
+    }
+
+    .seam.is-in::before { scale: 1 1; }
+    .seam.is-in span { opacity: 1; translate: 0 0; }
+
+    #for-hosts, #pricing, #faq { padding-top: 4vh; padding-bottom: 4vh; }
+    #features { padding-bottom: 4vh; }
+    #faq { padding-bottom: 8vh; }
+
+    /* ----- For hosts ----- */
+
+    .host-panel {
+      display: grid;
+      grid-template-columns: 1fr minmax(0, 0.9fr);
+      align-items: center;
+      gap: clamp(2rem, 5vw, 4.5rem);
+      width: min(1180px, 100%);
+      padding: clamp(2rem, 4vw, 3.75rem);
+      box-sizing: border-box;
+    }
+
+    .host-controls { list-style: none; margin: 2rem 0 0; padding: 0; }
+    .host-controls li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.25rem;
+      padding: 0.95rem 0;
+    }
+    .host-controls li + li { box-shadow: inset 0 1px 0 rgba(16, 10, 6, 0.08); }
+    .host-controls span { display: flex; flex-direction: column; gap: 0.15rem; }
+    .host-controls b { font-weight: 650; }
+    .host-controls small { font-size: 0.88rem; color: var(--driftwood); }
+
+    /* Switch: apricot when on, white knob with a springy slide */
+    .sw {
+      position: relative;
+      flex: none;
+      width: 3.1rem;
+      height: 1.85rem;
+      border: none;
+      border-radius: 100px;
+      background: rgba(16, 10, 6, 0.14);
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .sw::after {
+      content: "";
+      position: absolute;
+      top: 0.18rem;
+      left: 0.18rem;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(16, 10, 6, 0.2), 0 3px 8px rgba(16, 10, 6, 0.15);
+      transition: translate 0.4s cubic-bezier(0.34, 1.5, 0.64, 1);
+    }
+    .sw[aria-checked="true"] { background: linear-gradient(to right, #F9D6A8, #E08A45); }
+    .sw[aria-checked="true"]::after { translate: 1.25rem 0; }
+    .sw:focus-visible { outline: 2px solid var(--night); outline-offset: 3px; }
+
+    /* The live event card */
+    .live {
+      overflow: hidden;
+      border-radius: 28px;
+      background: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(16, 10, 6, 0.06), 0 30px 60px -24px rgba(16, 10, 6, 0.4);
+      rotate: 1.5deg;
+    }
+
+    .live-cover { position: relative; height: 150px; }
+    .live-cover img { width: 100%; height: 100%; object-fit: cover; filter: sepia(0.14) saturate(0.9) contrast(1.03); }
+    .live-cover::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(16, 10, 6, 0.35), transparent 60%); }
+
+    .live-pill {
+      position: absolute;
+      top: 0.9rem;
+      left: 0.9rem;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0.9);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .live-pill i { width: 7px; height: 7px; border-radius: 50%; background: #E08A45; box-shadow: 0 0 0 0 rgba(224, 138, 69, 0.6); animation: live 1.8s ease-out infinite; }
+    @keyframes live { to { box-shadow: 0 0 0 8px rgba(224, 138, 69, 0); } }
+
+    .live-body { padding: 1.3rem 1.4rem 1.4rem; }
+    .live-name { display: block; font-size: 1.3rem; letter-spacing: -0.02em; }
+    .live-sub { display: block; margin-top: 0.15rem; color: #8E8278; font-size: 0.85rem; }
+
+    .live-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 1.1rem; }
+    .live-stats div { padding: 0.75rem 0.8rem; border-radius: 16px; background: #F8F3EC; }
+    .live-stats b { display: block; font-size: 1.5rem; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .live-stats small { color: #8E8278; font-size: 0.8rem; }
+
+    .live-label { margin-top: 1.1rem; font-size: 0.8rem; font-weight: 600; color: #8E8278; }
+
+    /* Uploads sliding past, as they arrive */
+    .live-strip {
+      margin-top: 0.5rem;
+      overflow: hidden;
+      -webkit-mask: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+      mask: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+    }
+    .live-track { display: flex; gap: 0.5rem; width: max-content; animation: marquee 22s linear infinite; }
+    .live-track img { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; }
+    @keyframes marquee { to { translate: calc(-50% - 0.25rem) 0; } }
+
+    .live-code {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.1rem;
+      padding: 0.7rem 0.9rem;
+      border-radius: 14px;
+      background: var(--night);
+      color: #FCE7CB;
+      font-size: 0.85rem;
+    }
+    .live-code b { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
+
+    /* ----- Pricing ----- */
+
+    .price-panel {
+      width: min(1180px, 100%);
+      padding: clamp(2rem, 4vw, 3.75rem);
+      box-sizing: border-box;
+    }
+
+    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 2.2rem; }
+
+    .plan {
+      display: flex;
+      flex-direction: column;
+      padding: 1.8rem 1.9rem 2rem;
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.65);
+      box-shadow: inset 0 0 0 1px rgba(16, 10, 6, 0.06);
+    }
+
+    /* Plus wears the afterglow, so the two read as different tiers at a glance */
+    .plan-plus {
+      background:
+        linear-gradient(to bottom, rgba(16, 10, 6, 0.1), rgba(16, 10, 6, 0.55)),
+        var(--afterglow, #3F6A8E) center / cover;
+      color: #FCE7CB;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    .plan h3 { margin: 0; font-size: 1.05rem; font-weight: 650; }
+    .plan-price { margin: 0.5rem 0 0; font-size: clamp(2.2rem, 3.6vw, 3rem); font-weight: 700; letter-spacing: -0.04em; }
+    .plan ul { list-style: none; margin: 1.3rem 0 1.8rem; padding: 0; display: flex; flex-direction: column; gap: 0.65rem; }
+    .plan li { position: relative; padding-left: 1.6rem; line-height: 1.45; }
+    .plan li::before {
+      content: "";
+      position: absolute;
+      left: 0.15rem;
+      top: 0.35em;
+      width: 0.7rem;
+      height: 0.38rem;
+      border-left: 2px solid #E08A45;
+      border-bottom: 2px solid #E08A45;
+      rotate: -45deg;
+    }
+    .plan-plus li::before { border-color: #F9D6A8; }
+    /* (The album's button is sized in page units; here it gets fixed sizes) */
+    .plan-cta,
+    .plan-cta.page-cta { margin-top: auto; align-self: flex-start; padding: 0.8rem 1.4rem; font-size: 0.95rem; }
+
+    .plan-wait {
+      padding: 0.8rem 1.4rem;
+      border: none;
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--night);
+      font: 700 0.95rem var(--font-main);
+      cursor: pointer;
+      transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+    }
+    .plan-wait:hover { transform: translateY(-1px); }
+    .plan-wait:focus-visible { outline: 2px solid #FCE7CB; outline-offset: 3px; }
+
+    /* ----- FAQ ----- */
+
+    .faq-panel {
+      width: min(860px, 100%);
+      padding: clamp(2rem, 4vw, 3.5rem);
+      box-sizing: border-box;
+    }
+
+    .faq-list { margin-top: 1.8rem; }
+    .qa + .qa { box-shadow: inset 0 1px 0 rgba(16, 10, 6, 0.08); }
+
+    .qa button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      width: 100%;
+      padding: 1.15rem 0;
+      border: none;
+      background: none;
+      color: var(--night);
+      font: 650 1.08rem var(--font-main);
+      letter-spacing: -0.01em;
+      text-align: left;
+      cursor: pointer;
+    }
+    .qa button:focus-visible { outline: 2px solid var(--night); outline-offset: 2px; border-radius: 8px; }
+
+    /* Plus that turns into a minus */
+    .qa i { position: relative; flex: none; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(16, 10, 6, 0.1); }
+    .qa i::before, .qa i::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 0.75rem;
+      height: 2px;
+      margin: -1px 0 0 -0.375rem;
+      border-radius: 1px;
+      background: var(--night);
+      transition: rotate 0.4s cubic-bezier(0.34, 1.4, 0.64, 1);
+    }
+    .qa i::after { rotate: 90deg; }
+    .qa button[aria-expanded="true"] i::after { rotate: 0deg; }
+
+    .qa-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .qa-a p { overflow: hidden; margin: 0; max-width: 40rem; line-height: 1.6; color: var(--driftwood); }
+    .qa.is-open .qa-a { grid-template-rows: 1fr; }
+    .qa.is-open .qa-a p { padding-bottom: 1.2rem; }
+
+    .foot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 4rem;
+      color: #CFC6BC;
+      font-size: 0.88rem;
+      text-align: center;
+    }
+    .foot-brand { display: flex; align-items: center; gap: 0.6rem; color: #FCE7CB; }
+    .foot-brand svg { width: 1.8rem; height: 1.8rem; }
+    .foot-brand .foot-word { width: auto; height: 1.25rem; aspect-ratio: 9217 / 1726; }
+
+    @media (max-width: 900px) {
+      .host-panel, .plans { grid-template-columns: 1fr; }
+      .hiw-panel { grid-template-columns: 1fr; overflow: auto; max-height: none; }
+      .phone-wrap { display: none; }
+      .zone-panel { grid-template-columns: 1fr; }
+      .feat-list { grid-template-columns: 1fr 1fr; }
+      .feat-item:nth-child(3) { box-shadow: inset 0 1px 0 rgba(16, 10, 6, 0.08); }
+      .feat-item:nth-child(4) { box-shadow: inset 1px 0 0 rgba(16, 10, 6, 0.08), inset 0 1px 0 rgba(16, 10, 6, 0.08); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .rise-in { translate: none; scale: none; transition: opacity 0.4s ease; }
+      .scr, .scr * { animation: none !important; transition: opacity 0.3s ease; }
+      .zone-ping { animation: none; opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gradient" aria-hidden="true"></canvas>
+
+  <header class="header">
+    <a href="#" class="brand" aria-label="Momento, home">
+      <span class="brand-icon">
+        <svg aria-hidden="true"><use href="#glyph-album" /></svg>
+      </span>
+      <svg class="brand-word" aria-hidden="true"><use href="#wordmark" /></svg>
+    </a>
+    <nav class="nav glass">
+      <span class="nav-indicator" aria-hidden="true"></span>
+      <!-- Each links to a section below the album; the sections are still to be built -->
+      <a href="#home" class="nav-item active" aria-current="page">Home</a>
+      <a href="#how-it-works" class="nav-item">How it works</a>
+      <a href="#features" class="nav-item">Features</a>
+      <a href="#for-hosts" class="nav-item">For hosts</a>
+      <a href="#pricing" class="nav-item">Pricing</a>
+      <a href="#faq" class="nav-item">FAQ</a>
+    </nav>
+  </header>
+
+  <!-- Brand glyphs, traced from BrandAssets (1024 coordinate space) -->
+  <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="glyph-album" viewBox="165.5 161.5 700 700">
+      <g fill="currentColor" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round">
+        <g fill="none" stroke-width="22">
+          <rect x="197" y="328" width="130" height="40" rx="20" />
+          <rect x="197" y="432" width="130" height="40" rx="20" />
+          <rect x="197" y="536" width="130" height="40" rx="20" />
+          <rect x="197" y="640" width="130" height="40" rx="20" />
+        </g>
+        <rect x="262" y="232" width="560" height="559" rx="88" fill="none" stroke-width="44" />
+        <polygon points="428,331 658,331 543,468" stroke-width="20" />
+        <circle cx="542" cy="524" r="27" stroke="none" />
+        <polygon points="361,691 457,557 542,616 627,557 726,691" stroke-width="20" />
+      </g>
+    </symbol>
+    <!-- Wordmark from BrandAssets/Momento_Wordmark.svg: letters take currentColor,
+         the final o is the sunset (apricot sky over tide water) -->
+    <symbol id="wordmark" viewBox="-81.92 -1601.72 9217 1726">
+      <g transform="scale(1 -1)">
+        <defs>
+          <linearGradient id="wm-sky" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#F9D6A8"/><stop offset="1" stop-color="#E08A45"/></linearGradient>
+          <clipPath id="wm-up"><rect x="7842.7" y="586.7" width="1164.0" height="582.0"/></clipPath>
+          <clipPath id="wm-dn"><rect x="7842.7" y="-27.0" width="1164.0" height="550.3"/></clipPath>
+        </defs>
+        <circle cx="8424.7" cy="555.0" r="577.0" fill="url(#wm-sky)" clip-path="url(#wm-up)"/>
+        <circle cx="8424.7" cy="555.0" r="577.0" fill="#3F6A8E" clip-path="url(#wm-dn)"/>
+        <g fill="currentColor">
+          <path d="M135 0H438V703C438 815 430 1034 427 1215C480 1015 540 806 575 703L826 0H1083L1330 703C1365 809 1428 1026 1478 1227C1475 1039 1467 815 1467 703V0H1774V1490H1304L1066 806C1036 711 990 512 956 351C921 513 875 712 845 806L603 1490H135Z"/>
+          <path transform="translate(1815.8 0)" d="M628 -22C964 -22 1175 210 1175 554C1175 900 964 1132 628 1132C291 1132 81 900 81 554C81 210 291 -22 628 -22ZM628 214C468 214 387 360 387 555C387 753 468 896 628 896C788 896 870 752 870 555C870 360 788 214 628 214Z"/>
+          <path transform="translate(2979.7 0)" d="M128 0H428V676C428 810 509 884 615 884C717 884 789 814 789 705V0H1079V688C1079 805 1149 884 1263 884C1364 884 1440 823 1440 697V0H1741V754C1741 997 1589 1135 1384 1135C1230 1135 1088 1056 1025 884C973 1054 880 1135 737 1135C603 1135 478 1064 418 901L406 1118H128Z"/>
+          <path transform="translate(4756.5 0)" d="M633 -22C893 -22 1071 99 1126 285L854 336C822 250 743 204 638 204C487 204 385 298 378 481H1143V565C1143 947 910 1132 618 1132C291 1132 81 898 81 553C81 200 291 -22 633 -22ZM380 669C392 807 478 906 621 906C760 906 839 815 854 669Z"/>
+          <path transform="translate(5884.4 0)" d="M428 647C428 795 517 881 645 881C771 881 847 798 847 659V0H1147V711C1147 973 995 1132 763 1132C591 1132 478 1043 415 887L411 1118H128V0H428Z"/>
+          <path transform="translate(7067.2 0)" d="M683 1118H474V1384H174V1118H20V889H174V301C174 96 296 -16 520 -16C580 -16 647 -9 714 11L671 236C649 230 599 223 576 223C503 223 474 256 474 327V889H683Z"/>
+        </g>
+      </g>
+    </symbol>
+  </svg>
+
+  <main class="story" id="home">
+    <div class="stage">
+      <!-- Floating photos behind the album -->
+      <div class="floaters floaters-back" aria-hidden="true"></div>
+
+      <section class="hero-left hero-fade">
+        <h1 class="hero-title ink" data-text="Moments,&#10;kept.">Moments,<br>kept.</h1>
+        <p class="hero-copy">Every photo from your event,<br>in one shared album.</p>
+
+        <div class="hero-cta">
+          <div class="slide glass" role="button" tabindex="0" aria-label="Open the album">
+            <span class="slide-fill" aria-hidden="true"></span>
+            <span class="slide-knob" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path class="page-l" d="M12 6.8C10 5.3 7.2 4.8 4 5.2v12.6c3.2-.4 6 .1 8 1.6" />
+                <path class="page-r" d="M12 6.8c2-1.5 4.8-2 8-1.6v12.6c-3.2-.4-6 .1-8 1.6" />
+                <path d="M12 6.8v12.6" />
+              </svg>
+            </span>
+            <span class="slide-label" aria-hidden="true"><span>Open the album</span></span>
+          </div>
+          <p class="slide-hint">Click, drag or scroll to open</p>
+        </div>
+      </section>
+
+      <!-- The album; leaves, pages and rings are built by the script from ALBUM -->
+      <div class="album" aria-label="Momento photo album"></div>
+
+      <!-- Reading controls: grab a page edge to turn it, or use the arrows -->
+      <div class="page-grip prev" aria-hidden="true"><span class="grip-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" /></svg></span></div>
+      <div class="page-grip next" aria-hidden="true"><span class="grip-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" /></svg></span></div>
+      <div class="page-arrows">
+        <button class="pa glass" type="button" data-dir="-1" aria-label="Previous page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6" /></svg></button>
+        <span class="pa-count" aria-live="polite">1 of 4</span>
+        <button class="pa glass" type="button" data-dir="1" aria-label="Next page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg></button>
+      </div>
+
+      <!-- Floating photos in front of the album -->
+      <div class="floaters floaters-front" aria-hidden="true"></div>
+    </div>
+  </main>
+
+  <!-- ---------- How it works: five steps, scroll-driven, with a live phone ---------- -->
+  <section class="hiw" id="how-it-works" data-step="0">
+    <div class="hiw-sticky">
+      <div class="panel hiw-panel rise-in">
+        <div class="hiw-copy">
+          <h2 class="section-title ink" data-text="How it works">How it works</h2>
+          <p class="section-lede">From the first photo to the album you keep, in five steps.</p>
+          <ol class="steps">
+            <li class="step is-on"><button type="button" data-i="0">
+              <span class="step-no">01</span>
+              <span class="step-body"><b>Create the event</b>
+                <span class="step-more"><span>Name it, drag a sharing zone around the venue, and choose where the photos land: Google Drive, iCloud, Dropbox or OneDrive.</span></span>
+              </span></button></li>
+            <li class="step"><button type="button" data-i="1">
+              <span class="step-no">02</span>
+              <span class="step-body"><b>Put the code out</b>
+                <span class="step-more"><span>Momento makes a QR code and a six-letter code. Print it for the tables, put it on the screen, or send the link round.</span></span>
+              </span></button></li>
+            <li class="step"><button type="button" data-i="2">
+              <span class="step-no">03</span>
+              <span class="step-body"><b>Guests scan and join</b>
+                <span class="step-more"><span>One scan, no sign-up. Momento checks each guest is inside the zone, so the album stays with the people who were there.</span></span>
+              </span></button></li>
+            <li class="step"><button type="button" data-i="3">
+              <span class="step-no">04</span>
+              <span class="step-body"><b>Everyone shares</b>
+                <span class="step-more"><span>Guests share straight from their Photos app. Camera files go first, and on mobile data uploads can wait for Wi-Fi.</span></span>
+              </span></button></li>
+            <li class="step"><button type="button" data-i="4">
+              <span class="step-no">05</span>
+              <span class="step-body"><b>It all lands in one album</b>
+                <span class="step-more"><span>Full quality, grouped by camera and phone, saved in the cloud you chose. Yours to share, print or relive.</span></span>
+              </span></button></li>
+          </ol>
+        </div>
+
+        <div class="phone-wrap" aria-hidden="true">
+          <div class="phone">
+            <div class="phone-screen">
+              <span class="island"></span>
+
+              <!-- 01 Create the event -->
+              <div class="scr is-on">
+                <div class="app-top"><small>New event</small><b>Rooftop Birthday</b></div>
+                <div class="app-map">
+                  <svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid slice">
+                    <rect x="150" y="-10" width="110" height="70" rx="24" fill="#F9D6A8" opacity=".55" />
+                    <path d="M-10 150 Q 80 120 140 158 T 260 140" stroke="#3F6A8E" stroke-opacity=".35" stroke-width="14" fill="none" />
+                    <g stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round"><path d="M0 52 H240" /><path d="M86 0 V200" /><path d="M182 0 L148 200" /><path d="M0 98 L240 86" /></g>
+                    <g stroke="#FFFFFF" stroke-width="2.5" fill="none" opacity=".8"><path d="M40 0 V200" /><path d="M0 24 H240" /><path d="M0 176 H240" /><path d="M214 0 V200" /></g>
+                  </svg>
+                  <span class="app-zone"></span>
+                  <svg class="app-pin" viewBox="0 0 24 24" fill="#100A06" stroke="#FFFDF8" stroke-width="1.6"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.4" fill="#FFFDF8" stroke="none" /></svg>
+                  <span class="app-tag">150 m</span>
+                </div>
+                <div class="app-label">Photos go to</div>
+                <div class="app-chips"><span class="on">Google Drive</span><span>iCloud</span><span>Dropbox</span></div>
+                <div class="app-card">
+                  <div class="app-li"><span>Starts</span><b>Sat 8 Nov, 7:00 pm</b></div>
+                  <div class="app-li"><span>Allow videos</span><i class="mini-sw on"></i></div>
+                  <div class="app-li"><span>Guests see the gallery</span><i class="mini-sw on"></i></div>
+                </div>
+                <div class="app-btn">Create event and QR</div>
+              </div>
+
+              <!-- 02 Put the code out -->
+              <div class="scr">
+                <div class="app-top"><small>Rooftop Birthday</small><b>Scan to join</b></div>
+                <div class="app-qr"><svg class="qr" viewBox="0 0 25 25" shape-rendering="crispEdges"></svg><span class="scan-line"></span></div>
+                <div class="app-code"><span>R</span><span>F</span><span>T</span><span>8</span><span>2</span><span>9</span></div>
+                <div class="app-faces">
+                  <span class="faces"><img src="photos/02.jpg" alt=""><img src="photos/12.jpg" alt=""><img src="photos/13.jpg" alt=""><img src="photos/07.jpg" alt=""></span>
+                  <span><b>48 guests joined</b><small>3 in the last minute</small></span>
+                </div>
+                <div class="app-actions"><span>Share link</span><span>Print card</span><span>On screen</span></div>
+              </div>
+
+              <!-- 03 Guests scan and join -->
+              <div class="scr">
+                <div class="app-top"><small>Albums nearby</small><b>1 in range</b></div>
+                <div class="app-radar">
+                  <span class="rg" style="--s:42%"></span><span class="rg" style="--s:72%"></span><span class="rg" style="--s:102%"></span>
+                  <span class="sweep"></span>
+                  <span class="blip" style="--x:-34px; --y:-30px"><img src="photos/07.jpg" alt=""><small>40 m</small></span>
+                  <span class="blip far" style="--x:58px; --y:22px"><img src="photos/05.jpg" alt=""><small>180 m out</small></span>
+                  <span class="me"></span>
+                </div>
+                <div class="app-event"><img src="photos/07.jpg" alt=""><span><b>Rooftop Birthday</b><small>40 m away, inside the zone</small></span><i>In range</i></div>
+                <div class="app-event is-far"><img src="photos/05.jpg" alt=""><span><b>Sunset Run Club</b><small>680 m away</small></span><i>180 m out</i></div>
+                <div class="app-faces">
+                  <span class="faces"><img src="photos/13.jpg" alt=""><img src="photos/02.jpg" alt=""><img src="photos/12.jpg" alt=""></span>
+                  <span><b>12 friends sharing</b><small>at Rooftop Birthday</small></span>
+                </div>
+                <div class="app-btn">Join and start sharing</div>
+              </div>
+
+              <!-- 04 Everyone shares -->
+              <div class="scr">
+                <div class="app-top"><small>Sharing to</small><b>Rooftop Birthday</b></div>
+                <div class="app-sum">
+                  <span><b>Uploading 18 of 64</b><small>Camera files go first</small></span>
+                  <i>Wi-Fi</i>
+                  <em></em>
+                </div>
+                <ul class="app-uploads">
+                  <li style="--d:0s"><img src="photos/08.jpg" alt=""><span><b>DSC04812.ARW</b><small>Sony α7 IV</small><i></i></span></li>
+                  <li style="--d:.5s"><img src="photos/13.jpg" alt=""><span><b>_MG_0420.CR3</b><small>Canon R6 II</small><i></i></span></li>
+                  <li style="--d:1s"><img src="photos/02.jpg" alt=""><span><b>IMG_2291.HEIC</b><small>iPhone 17 Pro</small><i></i></span></li>
+                  <li style="--d:1.5s"><img src="photos/12.jpg" alt=""><span><b>IMG_2293.HEIC</b><small>iPhone 17 Pro</small><i></i></span></li>
+                </ul>
+                <p class="app-note">Offline shares resume on their own</p>
+              </div>
+
+              <!-- 05 It all lands in one album -->
+              <div class="scr">
+                <div class="app-top"><small>Saved to Google Drive</small><b>Rooftop Birthday</b></div>
+                <div class="app-chips"><span class="on">All</span><span>Phones</span><span>Cameras</span><span>Videos</span></div>
+                <div class="app-windows">
+                  <div class="win" style="--r:-5deg; --x:6%; --y:4%; --d:0s"><div class="win-pics"><img src="photos/08.jpg" alt=""><img src="photos/07.jpg" alt=""><img src="photos/04.jpg" alt=""></div><b>Sony α7 IV</b><small>86 photos</small></div>
+                  <div class="win" style="--r:4deg; --x:34%; --y:32%; --d:-2s"><div class="win-pics"><img src="photos/02.jpg" alt=""><img src="photos/12.jpg" alt=""><img src="photos/13.jpg" alt=""></div><b>iPhone 17 Pro</b><small>214 photos</small></div>
+                  <div class="win" style="--r:-2deg; --x:10%; --y:60%; --d:-4s"><div class="win-pics"><img src="photos/09.jpg" alt=""><img src="photos/11.jpg" alt=""><img src="photos/05.jpg" alt=""></div><b>Canon R6 II</b><small>40 photos</small></div>
+                </div>
+                <div class="app-saved">340 photos saved</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Features: the sharing zone first, then the rest ---------- -->
+  <section class="feat" id="features">
+    <div class="seam" aria-hidden="true"><span>Features</span></div>
+    <div class="panel zone-panel rise-in">
+      <div class="zone-copy">
+        <h2 class="section-title ink" data-text="Only the people&#10;who were there">Only the people<br>who were there</h2>
+        <p class="section-lede">Every Momento album has a sharing zone. Guests can join only while they’re inside it, so a wedding album never fills with strangers’ photos.</p>
+        <div class="zone-ctrl">
+          <div class="zone-ctrl-top"><label for="zoneR">Sharing zone</label><output id="zoneOut" for="zoneR">150 m</output></div>
+          <input type="range" id="zoneR" min="0" max="100" value="40">
+          <p class="zone-count"><b id="zoneIn">4</b> of <span id="zoneAll">9</span> guests can join</p>
+        </div>
+        <p class="zone-note">Out of range? Momento tells guests how far to move, and lets them know when they’re close enough. Momento Plus unlocks bigger zones.</p>
+      </div>
+      <div class="zone-map" aria-hidden="true">
+        <svg class="zone-streets" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+          <rect x="250" y="-20" width="190" height="120" rx="40" fill="#F9D6A8" opacity=".5" />
+          <path d="M-20 300 Q 140 250 240 315 T 430 290" stroke="#3F6A8E" stroke-opacity=".3" stroke-width="22" fill="none" />
+          <g stroke="#FFFFFF" stroke-width="9" fill="none" stroke-linecap="round"><path d="M0 120 H400" /><path d="M150 0 V400" /><path d="M310 0 L260 400" /><path d="M0 210 L400 190" /></g>
+          <g stroke="#FFFFFF" stroke-width="3.5" fill="none" opacity=".8"><path d="M70 0 V400" /><path d="M0 60 H400" /><path d="M0 360 H400" /><path d="M360 0 V400" /></g>
+        </svg>
+        <span class="zone-ring"></span>
+        <span class="zone-ping"></span>
+        <div class="zone-guests"></div>
+        <svg class="zone-pin" viewBox="0 0 24 24" fill="#100A06" stroke="#FFFDF8" stroke-width="1.6"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.4" fill="#FFFDF8" stroke="none" /></svg>
+      </div>
+    </div>
+
+    <div class="panel feat-list rise-in">
+      <div class="feat-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+        <h3>Cameras and phones, together</h3>
+        <p>Sony ARW, Canon CR3, iPhone HEIC and ProRAW all land as untouched originals.</p>
+      </div>
+      <div class="feat-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5Z"/><path d="M12 16v-5M9.8 13 12 10.8l2.2 2.2"/></svg>
+        <h3>Uploads that behave</h3>
+        <p>Camera files go first. On mobile data uploads can wait for Wi-Fi, and offline shares pick up on their own.</p>
+      </div>
+      <div class="feat-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5Z"/><path d="m9.5 13.5 1.8 1.8 3.4-3.6"/></svg>
+        <h3>Your cloud, your copy</h3>
+        <p>Photos save to Google Drive, iCloud, Dropbox or OneDrive. Nothing gets locked inside Momento.</p>
+      </div>
+      <div class="feat-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3.5"/><circle cx="9" cy="9.5" r="1.8"/><path d="m4 18 5-5 3.5 3.5 2.5-2.5 5 5"/></svg>
+        <h3>Sorted for you</h3>
+        <p>Each file’s camera data groups the album by device. Filter by phones, cameras or videos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- For hosts ---------- -->
+  <section class="feat" id="for-hosts">
+    <div class="seam" aria-hidden="true"><span>For hosts</span></div>
+    <div class="panel host-panel rise-in">
+      <div class="host-copy">
+        <h2 class="section-title ink" data-text="Set it up once,&#10;enjoy the night">Set it up once,<br>enjoy the night</h2>
+        <p class="section-lede">Create the event before the doors open. While everyone celebrates, you can watch the album fill in real time.</p>
+        <ul class="host-controls">
+          <li>
+            <span><b>Guests can see the gallery</b><small>Turn it off to keep the album private until the event ends</small></span>
+            <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Guests can see the gallery"></button>
+          </li>
+          <li>
+            <span><b>Allow videos</b><small>Up to 4K, uploaded after the photos</small></span>
+            <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Allow videos"></button>
+          </li>
+          <li>
+            <span><b>Keep originals</b><small>RAW and HEIC files stay untouched</small></span>
+            <button class="sw" type="button" role="switch" aria-checked="false" aria-label="Keep originals"></button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="live" aria-hidden="true">
+        <div class="live-cover">
+          <img src="photos/07.jpg" alt="">
+          <span class="live-pill"><i></i>Live</span>
+        </div>
+        <div class="live-body">
+          <b class="live-name">Rooftop Birthday</b>
+          <small class="live-sub">Sharing zone 150 m, saving to Google Drive</small>
+          <div class="live-stats">
+            <div><b data-count="48">0</b><small>Guests</small></div>
+            <div><b data-count="312">0</b><small>Photos</small></div>
+            <div><b data-count="9">0</b><small>Videos</small></div>
+          </div>
+          <div class="live-label">Just uploaded</div>
+          <div class="live-strip">
+            <div class="live-track">
+              <img src="photos/08.jpg" alt=""><img src="photos/02.jpg" alt=""><img src="photos/13.jpg" alt=""><img src="photos/04.jpg" alt=""><img src="photos/09.jpg" alt=""><img src="photos/12.jpg" alt="">
+              <img src="photos/08.jpg" alt=""><img src="photos/02.jpg" alt=""><img src="photos/13.jpg" alt=""><img src="photos/04.jpg" alt=""><img src="photos/09.jpg" alt=""><img src="photos/12.jpg" alt="">
+            </div>
+          </div>
+          <div class="live-code"><span>Event code</span><b>RFT829</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Pricing (placeholder plans) ---------- -->
+  <section class="feat" id="pricing">
+    <div class="seam" aria-hidden="true"><span>Pricing</span></div>
+    <div class="panel price-panel rise-in">
+      <div class="price-head">
+        <h2 class="section-title ink" data-text="Free to start">Free to start</h2>
+        <p class="section-lede">Every event gets the full album. Momento Plus is for bigger venues.</p>
+      </div>
+      <div class="plans">
+        <div class="plan">
+          <h3>Free</h3>
+          <p class="plan-price">$0</p>
+          <ul>
+            <li>Sharing zones up to 1 km</li>
+            <li>Full-quality photos and videos</li>
+            <li>Saves to Google Drive, iCloud, Dropbox or OneDrive</li>
+            <li>Albums grouped by camera and phone</li>
+          </ul>
+          <button class="page-cta plan-cta" type="button">Create an album</button>
+        </div>
+        <div class="plan plan-plus">
+          <h3>Momento Plus</h3>
+          <p class="plan-price">Coming soon</p>
+          <ul>
+            <li>Everything in Free</li>
+            <li>Bigger sharing zones for festivals and venues</li>
+            <li>More to come</li>
+          </ul>
+          <button class="plan-cta plan-wait" type="button">Join the waitlist</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- FAQ ---------- -->
+  <section class="feat" id="faq">
+    <div class="seam" aria-hidden="true"><span>FAQ</span></div>
+    <div class="panel faq-panel rise-in">
+      <h2 class="section-title ink" data-text="Questions">Questions</h2>
+      <div class="faq-list">
+        <div class="qa">
+          <button type="button" aria-expanded="false"><span>Do guests need an account?</span><i></i></button>
+          <div class="qa-a"><p>No. Guests scan the event’s QR code or type its six-letter code, and they can start sharing straight away.</p></div>
+        </div>
+        <div class="qa">
+          <button type="button" aria-expanded="false"><span>Who owns the photos?</span><i></i></button>
+          <div class="qa-a"><p>The host does. Every photo saves to the cloud the host chose (Google Drive, iCloud, Dropbox or OneDrive), not to Momento.</p></div>
+        </div>
+        <div class="qa">
+          <button type="button" aria-expanded="false"><span>What if a guest is outside the sharing zone?</span><i></i></button>
+          <div class="qa-a"><p>Momento shows them how far away they are and can let them know once they’re close enough to join.</p></div>
+        </div>
+        <div class="qa">
+          <button type="button" aria-expanded="false"><span>Does it work with real cameras?</span><i></i></button>
+          <div class="qa-a"><p>Yes. Sony ARW, Canon CR3, iPhone HEIC and ProRAW files upload as untouched originals, and camera files go first.</p></div>
+        </div>
+        <div class="qa">
+          <button type="button" aria-expanded="false"><span>Will it use up my mobile data?</span><i></i></button>
+          <div class="qa-a"><p>Only if you let it. Turn on Wi-Fi only and uploads wait until you’re connected. Shares made offline resume on their own.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="foot">
+      <span class="foot-brand"><svg aria-hidden="true"><use href="#glyph-album" /></svg><svg class="foot-word" role="img" aria-label="Momento"><use href="#wordmark" /></svg></span>
+      <span>Every photo from your event, in one shared album.</span>
+    </footer>
+  </section>
+
+  <script>
+    const canvas = document.getElementById('gradient');
+    const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, powerPreference: 'low-power' });
+
+    // The gradient is pure blur, so it's drawn into a small buffer and scaled up;
+    // only the grain pass runs at full resolution.
+    const SCENE_SCALE = 0.25;
+    const MAX_DPR = 1.5;
+
+    const vertSrc = `
+      attribute vec2 p;
+      void main() { gl_Position = vec4(p, 0.0, 1.0); }
+    `;
+
+    const hashSrc = `
+      float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+    `;
+
+    const sceneSrc = `
+      precision highp float;
+      uniform vec2 res;
+      uniform float t;
+      uniform vec2 mouse;   // 0..1, y from the top
+      uniform float hover;  // 0..1, eases in while the pointer is over the page
+      ${hashSrc}
+
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x),
+                   mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+      }
+
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 4; i++) {
+          v += a * noise(p);
+          p = p * 2.03 + 11.7;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      // Colour ramp from sky (0) to ground (1)
+      vec3 ramp(float f) {
+        vec3 peach  = vec3(0.992, 0.890, 0.737);
+        vec3 apricot= vec3(0.984, 0.827, 0.635);
+        vec3 orange = vec3(0.871, 0.541, 0.290);
+        vec3 blue   = vec3(0.231, 0.424, 0.580);
+        vec3 deep   = vec3(0.165, 0.329, 0.455);
+        vec3 dark   = vec3(0.063, 0.039, 0.024);
+        vec3 c = mix(peach, apricot, smoothstep(0.00, 0.26, f));
+        c = mix(c, orange, smoothstep(0.22, 0.36, f));
+        c = mix(c, blue,   smoothstep(0.36, 0.50, f));
+        c = mix(c, deep,   smoothstep(0.48, 0.58, f));
+        c = mix(c, dark,   smoothstep(0.52, 0.68, f));
+        return c;
+      }
+
+      void main() {
+        vec2 uv = gl_FragCoord.xy / res;
+        float aspect = res.x / res.y;
+        vec2 p = vec2(uv.x * aspect, 1.0 - uv.y);   // y = 0 at the top
+
+        // Colours are pushed away from the pointer. Sampling nearer the pointer
+        // spreads the field outward; strength stays below 1 so it never folds over.
+        vec2 d = p - vec2(mouse.x * aspect, mouse.y);
+        p -= d * 0.65 * exp(-dot(d, d) / 0.06) * hover;
+        float x = p.x, y = p.y;
+
+        // Domain-warped noise bends the horizontal bands into ridges
+        vec2 q = vec2(fbm(vec2(x * 1.0, y * 0.7 + t * 0.05)),
+                      fbm(vec2(x * 1.0 + 5.2, y * 0.7 - t * 0.04)));
+        float w = fbm(vec2(x * 1.1, y * 0.5) + 1.8 * q + vec2(t * 0.03, 0.0));
+
+        float f = y + (w - 0.5) * 0.9;
+        gl_FragColor = vec4(ramp(f), 1.0);
+      }
+    `;
+
+    const grainSrc = `
+      precision highp float;
+      uniform sampler2D scene;
+      uniform vec2 res;
+      uniform float seed;
+      ${hashSrc}
+
+      void main() {
+        vec3 col = texture2D(scene, gl_FragCoord.xy / res).rgb;
+        // Film grain, re-seeded each frame; also hides 8-bit banding from the upscale
+        col += (hash(gl_FragCoord.xy + seed) - 0.5) * 0.07;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    function program(fragSrc) {
+      const prog = gl.createProgram();
+      for (const [type, src] of [[gl.VERTEX_SHADER, vertSrc], [gl.FRAGMENT_SHADER, fragSrc]]) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        gl.attachShader(prog, s);
+      }
+      gl.bindAttribLocation(prog, 0, 'p');
+      gl.linkProgram(prog);
+      const u = {};
+      const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+      for (let i = 0; i < n; i++) {
+        const name = gl.getActiveUniform(prog, i).name;
+        u[name] = gl.getUniformLocation(prog, name);
+      }
+      return { prog, u };
+    }
+
+    if (gl) {
+      const scene = program(sceneSrc);
+      const grain = program(grainSrc);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+
+      const still = matchMedia('(prefers-reduced-motion: reduce)');
+      let sceneW = 1, sceneH = 1;
+
+      function resize() {
+        const dpr = Math.min(devicePixelRatio, MAX_DPR);
+        canvas.width = Math.round(innerWidth * dpr);
+        canvas.height = Math.round(innerHeight * dpr);
+        sceneW = Math.max(1, Math.round(innerWidth * SCENE_SCALE));
+        sceneH = Math.max(1, Math.round(innerHeight * SCENE_SCALE));
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, sceneW, sceneH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        dirty = true;
+      }
+
+      // Pointer state: raw target, and eased values the shader sees
+      const pointer = { x: 0.5, y: 0.5, inside: false };
+      const mouse = { x: 0.5, y: 0.5 };
+      let hover = 0;
+      let dirty = true;
+
+      function onPointer(e) {
+        pointer.x = e.clientX / innerWidth;
+        pointer.y = e.clientY / innerHeight;
+        if (!pointer.inside) {
+          // Start from the entry point so the first frame doesn't streak across the page
+          mouse.x = pointer.x;
+          mouse.y = pointer.y;
+        }
+        pointer.inside = true;
+      }
+      addEventListener('pointermove', onPointer, { passive: true });
+      addEventListener('pointerdown', onPointer, { passive: true });
+      document.documentElement.addEventListener('pointerleave', () => { pointer.inside = false; });
+      addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') pointer.inside = false; });
+      addEventListener('blur', () => { pointer.inside = false; });
+      addEventListener('resize', resize);
+
+      let t = 0, last = performance.now();
+
+      function frame(now) {
+        const dt = Math.min(Math.max((now - last) / 1000, 0), 0.1);
+        last = now;
+        const ease = (rate) => 1 - Math.exp(-dt * rate);
+        // Eased so the bubble glides after the pointer instead of snapping to it
+        mouse.x += (pointer.x - mouse.x) * ease(5);
+        mouse.y += (pointer.y - mouse.y) * ease(5);
+        hover += ((pointer.inside ? 1 : 0) - hover) * ease(3);
+
+        const lag = Math.hypot(pointer.x - mouse.x, pointer.y - mouse.y);
+        const settling = hover > 0.001 && (lag > 0.0005 || Math.abs((pointer.inside ? 1 : 0) - hover) > 0.001);
+        if (!still.matches) t += dt;
+
+        // With reduced motion the page only redraws while responding to the pointer
+        if (!still.matches || settling || dirty) {
+          dirty = false;
+
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.viewport(0, 0, sceneW, sceneH);
+          gl.useProgram(scene.prog);
+          gl.uniform2f(scene.u.res, sceneW, sceneH);
+          gl.uniform1f(scene.u.t, t);
+          gl.uniform2f(scene.u.mouse, mouse.x, mouse.y);
+          gl.uniform1f(scene.u.hover, hover);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.viewport(0, 0, canvas.width, canvas.height);
+          gl.useProgram(grain.prog);
+          gl.uniform1i(grain.u.scene, 0);
+          gl.uniform2f(grain.u.res, canvas.width, canvas.height);
+          gl.uniform1f(grain.u.seed, still.matches ? 0 : (now % 1000) * 0.137);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      still.addEventListener('change', () => { dirty = true; });
+      resize();
+      requestAnimationFrame(frame);
+    }
+  </script>
+
+  <script>
+    // Nav: pointer-lit rim, and a spring-driven selection pill you can drag
+    (() => {
+      const nav = document.querySelector('.nav');
+      const pill = nav.querySelector('.nav-indicator');
+      const items = [...nav.querySelectorAll('.nav-item')];
+      const still = matchMedia('(prefers-reduced-motion: reduce)');
+
+      // Rim light follows the pointer on every glass surface; the logo tile
+      // lights up when the pointer is anywhere over the logo, wordmark included
+      for (const glass of document.querySelectorAll('.glass')) {
+        const trigger = glass.closest('.brand') || glass;
+        trigger.addEventListener('pointerenter', () => {
+          glass.style.setProperty('--shine', 1);
+          glass.classList.add('is-lit');
+        });
+        trigger.addEventListener('pointerleave', () => {
+          glass.style.setProperty('--shine', 0);
+          glass.classList.remove('is-lit');
+        });
+        trigger.addEventListener('pointermove', (e) => {
+          const r = glass.getBoundingClientRect();
+          glass.style.setProperty('--mx', `${e.clientX - r.left}px`);
+          glass.style.setProperty('--my', `${e.clientY - r.top}px`);
+        });
+      }
+
+      // Spring state for the pill's left edge and width (px, relative to the nav)
+      const STIFFNESS = 520;
+      const DAMPING = 34;   // slightly under-damped: a small, liquid overshoot
+      let active = items.find((i) => i.classList.contains('active')) || items[0];
+      const home = active;   // Home: the hero and album; the logo returns here
+      let x = active.offsetLeft, w = active.offsetWidth;
+      let vx = 0, vw = 0;
+      let tx = x, tw = w;
+      let running = false, last = 0;
+
+      function render() {
+        // Stretch along the direction of travel, thin slightly to keep the volume
+        const stretch = Math.min(Math.abs(vx) * 0.03, 22);
+        pill.style.width = `${w + stretch}px`;
+        // Position goes on `translate` so the CSS `scale` lift doesn't multiply it
+        pill.style.translate = `${x - stretch / 2}px 0`;
+        pill.style.transform = `scaleY(${1 - stretch / 260})`;
+      }
+
+      function step() {
+        // One clock for both ends (a rAF timestamp can predate the press), never negative,
+        // integrated in small fixed substeps so a long frame can't fling the pill
+        const now = performance.now();
+        let dt = Math.min(Math.max((now - last) / 1000, 0), 1 / 30);
+        last = now;
+        while (dt > 0) {
+          const h = Math.min(dt, 1 / 240);
+          vx += ((tx - x) * STIFFNESS - vx * DAMPING) * h;
+          vw += ((tw - w) * STIFFNESS - vw * DAMPING) * h;
+          x += vx * h;
+          w += vw * h;
+          dt -= h;
+        }
+        const settled = Math.abs(tx - x) < 0.1 && Math.abs(vx) < 0.5 && Math.abs(tw - w) < 0.1 && Math.abs(vw) < 0.5;
+        if (settled && !dragging) {
+          x = tx; w = tw; vx = vw = 0;
+          running = false;
+        }
+        render();
+        if (running) requestAnimationFrame(step);
+      }
+
+      function moveTo(nx, nw) {
+        tx = nx; tw = nw;
+        if (still.matches) { x = tx; w = tw; vx = vw = 0; render(); return; }
+        if (!running) {
+          running = true;
+          last = performance.now();
+          requestAnimationFrame(step);
+        }
+      }
+
+      function select(item) {
+        active.classList.remove('active');
+        active.removeAttribute('aria-current');
+        active = item;
+        active.classList.add('active');
+        active.setAttribute('aria-current', 'page');
+        moveTo(item.offsetLeft, item.offsetWidth);
+      }
+
+      function nearest(centerX) {
+        return items.reduce((best, i) =>
+          Math.abs(i.offsetLeft + i.offsetWidth / 2 - centerX) <
+          Math.abs(best.offsetLeft + best.offsetWidth / 2 - centerX) ? i : best);
+      }
+
+      // Press anywhere on the bar and drag; a press that barely moves is a click
+      let dragging = false, pressX = null;
+
+      nav.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        pressX = e.clientX;
+      });
+
+      nav.addEventListener('pointermove', (e) => {
+        if (pressX === null) return;
+        if (!dragging && Math.abs(e.clientX - pressX) > 4) {
+          dragging = true;
+          nav.classList.add('is-dragging');
+          // Capture only once it's a drag, so plain clicks still land on the link.
+          // The click after a drag then targets the nav itself and selects nothing.
+          nav.setPointerCapture(e.pointerId);
+        }
+        if (!dragging) return;
+        const r = nav.getBoundingClientRect();
+        const cx = e.clientX - r.left;
+        const target = nearest(cx);
+        const first = items[0], lastItem = items[items.length - 1];
+        // Width morphs toward whichever item is underneath; position tracks the pointer
+        const nw = target.offsetWidth;
+        const nx = Math.max(first.offsetLeft, Math.min(cx - nw / 2, lastItem.offsetLeft + lastItem.offsetWidth - nw));
+        moveTo(nx, nw);
+      });
+
+      function release(e) {
+        if (pressX === null) return;
+        if (dragging) {
+          const r = nav.getBoundingClientRect();
+          go(nearest(e.clientX - r.left));
+        }
+        dragging = false;
+        pressX = null;
+        nav.classList.remove('is-dragging');
+      }
+      nav.addEventListener('pointerup', release);
+      nav.addEventListener('pointercancel', release);
+
+      // ---- Sections: each item scrolls to its section, and scrolling moves the pill ----
+      // An item's section is the element its href names. Sections still to be built
+      // simply don't exist yet; their items stay put and come alive once added.
+      const sectionOf = (item) => document.querySelector(item.getAttribute('href'));
+      let spyLock = 0;   // while a nav-driven scroll runs, the spy doesn't fight it
+
+      // Diffuse transition: the page blurs out, jumps, and the destination sharpens in
+      const DIFFUSE_MS = 450;
+      function diffuse(top) {
+        const A = window.momentoAlbum;
+        if (still.matches) { if (top === 0 && A) A.skip(0); else scrollTo(0, top); return; }
+        document.body.classList.add('is-diffusing');
+        setTimeout(() => {
+          if (top === 0 && A) A.skip(0); else scrollTo({ top, behavior: 'instant' });
+          requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('is-diffusing')));
+        }, DIFFUSE_MS);
+      }
+
+      // Every nav jump gets an animation:
+      // - leaving the album for How it works: the book closes and bursts into photos
+      // - leaving the album for any other section: the same burst, then a diffuse to it
+      // - everything else (including back to Home): a diffuse
+      function go(item) {
+        select(item);
+        const section = sectionOf(item);
+        if (!section) return;
+        const A = window.momentoAlbum;
+        const ih = innerHeight;
+        // Pinned sections (How it works) settle at their own top; the rest clear the nav
+        const pinned = section.querySelector('.hiw-sticky');
+        const top = item === home ? 0
+          : section.getBoundingClientRect().top + scrollY - (pinned ? 0 : nav.offsetHeight + 40);
+        const inAlbum = A && scrollY < (A.end - 0.02) * ih;
+
+        if (item === home) {
+          spyLock = performance.now() + 2500;
+          if (inAlbum && scrollY <= A.introEnd * ih) A.glide(0, 1600);   // still in the hero: just glide
+          else diffuse(0);
+          return;
+        }
+        if (inAlbum) {
+          if (scrollY < A.closeAt * ih) A.skip(A.closeAt);
+          const burst = pinned ? 2800 : 1700;
+          spyLock = performance.now() + burst + DIFFUSE_MS * 2 + 200;
+          A.glide(A.end, burst);
+          if (!pinned) setTimeout(() => diffuse(top), burst - 150);
+          return;
+        }
+        spyLock = performance.now() + DIFFUSE_MS * 2 + 300;
+        diffuse(top);
+      }
+
+      // The current section is the last one whose top has passed 40% down the window
+      let spyQueued = false;
+      function spy() {
+        spyQueued = false;
+        if (dragging || performance.now() < spyLock) return;
+        const line = innerHeight * 0.4;
+        let current = home;
+        for (const item of items) {
+          const section = sectionOf(item);
+          if (section && section.getBoundingClientRect().top <= line) current = item;
+        }
+        if (current !== active) select(current);
+      }
+      addEventListener('scroll', () => {
+        if (!spyQueued) { spyQueued = true; requestAnimationFrame(spy); }
+      }, { passive: true });
+      addEventListener('scrollend', () => { if (performance.now() >= spyLock) spy(); });
+
+      // Clicks and keyboard (Enter) both arrive here
+      nav.addEventListener('click', (e) => {
+        e.preventDefault();
+        const item = e.target.closest('.nav-item');
+        if (item) go(item);
+      });
+
+      // The logo goes home, with the same transition as the Home item
+      document.querySelector('.brand').addEventListener('click', (e) => {
+        e.preventDefault();
+        go(home);
+      });
+
+      // Keep the pill aligned once fonts load or the window resizes
+      const snap = () => { x = tx = active.offsetLeft; w = tw = active.offsetWidth; vx = vw = 0; render(); };
+      addEventListener('resize', snap);
+      document.fonts.ready.then(snap);
+      snap();
+    })();
+  </script>
+
+  <script>
+    // Album: built from ALBUM, opened and paged by scroll
+    (() => {
+      // ---- Photos: edit here. ----
+      // 14 slots. Drop your files in a folder (e.g. photos/01.jpg) and list them in
+      // order; any slot left empty falls back to a stand-in. L = landscape, P = portrait,
+      // S = square: the slot crops to that shape, so match orientation where you can.
+      //   1 L  2 L  3 P  4 S  5 P  6 L  7 P  8 L  9 S  10 L  11 P  12 P  13 L  14 P
+      // Web copies of BrandAssets/Photos, matched to each slot's shape and caption
+      const PHOTOS = [
+        'photos/07.jpg',   // 1  L  Your cover photo: friends on the rocks at sunset
+        'photos/08.jpg',   // 2  L  The big moment: sunset sky over the water
+        'photos/02.jpg',   // 3  P  Candid: the station group shot
+        'photos/04.jpg',   // 4  S  Behind the scenes: beach at dusk
+        'photos/03.jpg',   // 5  P  The event code: camera on the pier at night
+        'photos/13.jpg',   // 6  L  Arrivals: hats and moustaches
+        'photos/10.jpg',   // 7  P  First dance: the dome
+        'photos/09.jpg',   // 8  L  Speeches: the jazz band
+        'photos/11.jpg',   // 9  S  Late night: city lights
+        'photos/05.jpg',   // 10 L  Uploading now: palms and clock tower
+        'photos/01.jpg',   // 11 P  From a camera: camera on the pier
+        'photos/12.jpg',   // 12 P  From a phone: phone group photo
+        'photos/06.jpg',   // 13 L  Saved and shared: clock tower
+        'photos/03.jpg',   // 14 P  Your first photo goes here
+      ];
+      const photoSrc = (id, w, h) => PHOTOS[id - 1] || `https://picsum.photos/seed/momento-${id}/${w}/${h}`;
+
+      // ---- Content: edit here. One entry per open spread (left page, right page). ----
+      // Page types: 'text' (number, title, body) · 'photos' · 'cta' (title, body, button).
+      // Each photo is placed by hand: x/y = top-left as % of the page, w = % of page
+      // width, r = ratio ('4/3', '3/4', '1/1'), rot = degrees, mount = corners | tape | polaroid.
+      const ALBUM = [
+        {
+          left: { type: 'text', no: '01', title: 'A shared album for every moment',
+                  body: 'Momento gathers the photos everyone takes into one album, so nothing stays stuck on a single phone.',
+                  photos: [{ id: 1, x: 16, y: 56, w: 64, r: '4/3', rot: -3, mount: 'tape', caption: 'Golden hour, all four of us' }] },
+          right: { type: 'photos', photos: [
+                  { id: 2, x: 9, y: 7, w: 70, r: '4/3', rot: 2, mount: 'corners', caption: 'The sky did that' },
+                  { id: 4, x: 12, y: 58, w: 38, r: '1/1', rot: 3, mount: 'tape', caption: 'Wrapped up for sunset' },
+                  { id: 3, x: 58, y: 46, w: 36, r: '3/4', rot: -4, mount: 'polaroid', caption: 'Platform 7 crew' }] },
+        },
+        {
+          left: { type: 'text', no: '02', title: 'Scan to join',
+                  body: 'Guests scan a code at the event and add photos straight from their camera roll. No sign-up needed.',
+                  photos: [{ id: 5, x: 50, y: 52, w: 34, r: '3/4', rot: 4, mount: 'polaroid', caption: 'One more shot' }] },
+          right: { type: 'photos', photos: [
+                  { id: 6, x: 6, y: 5, w: 58, r: '4/3', rot: -2, mount: 'corners', caption: 'Moustache o’clock' },
+                  { id: 7, x: 60, y: 9, w: 34, r: '3/4', rot: 3, mount: 'tape', caption: 'Looking up' },
+                  { id: 8, x: 10, y: 47, w: 50, r: '4/3', rot: 2, mount: 'polaroid', caption: 'The band played on' },
+                  { id: 9, x: 58, y: 55, w: 34, r: '1/1', rot: -5, mount: 'corners', caption: 'City after dark' }] },
+        },
+        {
+          left: { type: 'text', no: '03', title: 'Photos flow in',
+                  body: 'Uploads arrive in full quality and land in the album as they happen, from cameras and phones alike.',
+                  photos: [{ id: 10, x: 14, y: 55, w: 62, r: '4/3', rot: -2, mount: 'corners', caption: 'Blue hour by the palms' }] },
+          right: { type: 'photos', photos: [
+                  { id: 11, x: 6, y: 6, w: 46, r: '3/4', rot: -3, mount: 'polaroid', caption: 'Framing it just right' },
+                  { id: 12, x: 48, y: 38, w: 46, r: '3/4', rot: 4, mount: 'polaroid', caption: 'Everyone made it in' }] },
+        },
+        {
+          left: { type: 'text', no: '04', title: 'Keep it forever',
+                  body: 'Your album saves to the storage you already use, ready to share, print or relive.',
+                  photos: [{ id: 13, x: 12, y: 56, w: 60, r: '4/3', rot: 3, mount: 'tape', caption: 'Clock tower, clear skies' }] },
+          right: { type: 'cta', title: 'Want to see how it works?',
+                   body: 'Scan a code, share your shots, and the album builds itself. Here’s the whole thing, step by step.',
+                   button: 'See how it works', href: '#how-it-works',
+                   photos: [{ id: 14, x: 50, y: 56, w: 34, r: '3/4', rot: -4, mount: 'polaroid', caption: 'Your shot is next' }] },
+        },
+      ];
+
+      // Scroll timeline, in screen heights
+      // Generous lengths so each step is an unhurried moment of its own
+      const T = { hero: 0.6, intro: 1.4, turn: 1.5, hold: 1.0, close: 1.2, rise: 0.9 };
+      const STEP = 2;   // px between stacked leaves
+
+      const story = document.querySelector('.story');
+      const stage = document.querySelector('.stage');
+      const album = document.querySelector('.album');
+      const pageCount = document.querySelector('.pa-count');
+      const heroEls = [...document.querySelectorAll('.hero-fade')];
+      const still = matchMedia('(prefers-reduced-motion: reduce)');
+      const n = ALBUM.length;
+
+      // ---- Textures: the afterglow field and paper grain, painted once ----
+      // Painted at full resolution (enough for a 2x screen) with a true Gaussian blur
+      // where canvas filters exist; otherwise drawn small and upscaled in steps,
+      // which approximates the blur. Grain is per-pixel so it stays fine.
+      function paintAfterglow(w, h) {
+        const probe = document.createElement('canvas').getContext('2d');
+        probe.filter = 'blur(2px)';
+        const canBlur = probe.filter === 'blur(2px)';
+        const div = canBlur ? 1 : 12;
+
+        const c = document.createElement('canvas');
+        c.width = Math.round(w / div);
+        c.height = Math.round(h / div);
+        const ctx = c.getContext('2d');
+        const cw = c.width, ch = c.height;
+
+        const sky = ctx.createLinearGradient(0, 0, 0, ch);
+        sky.addColorStop(0, '#FCE7CB');      // Glow
+        sky.addColorStop(0.32, '#F9D6A8');   // Cream
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, cw, ch);
+        if (canBlur) ctx.filter = `blur(${Math.round(ch * 0.04)}px)`;
+
+        // Each wave is a smooth curve wider than the canvas, so the blur never
+        // pulls in transparent edges
+        const wave = (y, amp, color, phase) => {
+          const pts = 40;
+          ctx.beginPath();
+          ctx.moveTo(-cw * 0.2, ch * 1.2);
+          for (let i = 0; i <= pts; i++) {
+            const px = -cw * 0.2 + (cw * 1.4 * i) / pts;
+            const py = y + Math.sin(i * 0.42 + phase) * amp + Math.sin(i * 1.13 + phase * 2) * amp * 0.45;
+            ctx.lineTo(px, py);
+          }
+          ctx.lineTo(cw * 1.2, ch * 1.2);
+          ctx.closePath();
+          ctx.fillStyle = color;
+          ctx.fill();
+        };
+        wave(ch * 0.3, ch * 0.035, '#E08A45', 0.4);   // Apricot
+        wave(ch * 0.47, ch * 0.04, '#3F6A8E', 1.7);   // Tide
+        wave(ch * 0.63, ch * 0.045, '#100A06', 3.1);  // Night
+        ctx.filter = 'none';
+
+        let out = c;
+        if (!canBlur) {
+          for (const f of [3, 12]) {
+            const up = document.createElement('canvas');
+            up.width = Math.round((w * f) / 12);
+            up.height = Math.round((h * f) / 12);
+            const u = up.getContext('2d');
+            u.imageSmoothingQuality = 'high';
+            u.drawImage(out, 0, 0, up.width, up.height);
+            out = up;
+          }
+        }
+        const octx = out.getContext('2d');
+        const img = octx.getImageData(0, 0, w, h);
+        for (let i = 0; i < img.data.length; i += 4) {
+          const g = (Math.random() - 0.5) * 18;
+          img.data[i] += g; img.data[i + 1] += g; img.data[i + 2] += g;
+        }
+        octx.putImageData(img, 0, 0);
+        return out.toDataURL('image/jpeg', 0.92);
+      }
+
+      function paintGrain(size) {
+        const c = document.createElement('canvas');
+        c.width = c.height = size;
+        const ctx = c.getContext('2d');
+        const img = ctx.createImageData(size, size);
+        for (let i = 0; i < img.data.length; i += 4) {
+          img.data[i] = 16; img.data[i + 1] = 10; img.data[i + 2] = 6;
+          img.data[i + 3] = Math.random() * 14;
+        }
+        ctx.putImageData(img, 0, 0);
+        return c.toDataURL('image/png');
+      }
+
+      // Bookcloth: every thread row and column gets its own shade, plus fine fibre
+      // noise, which reads as a linen weave once tiled
+      function paintLinen(size, [r, g, b], spread) {
+        const c = document.createElement('canvas');
+        c.width = c.height = size;
+        const ctx = c.getContext('2d');
+        const img = ctx.createImageData(size, size);
+        const rows = Array.from({ length: size }, () => (Math.random() - 0.5) * spread);
+        const cols = Array.from({ length: size }, () => (Math.random() - 0.5) * spread);
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            // Alternate which thread is on top, like a plain weave
+            const v = ((x + y) & 1 ? rows[y] : cols[x]) + (Math.random() - 0.5) * spread * 0.5;
+            const i = (y * size + x) * 4;
+            img.data[i] = r + v; img.data[i + 1] = g + v; img.data[i + 2] = b + v; img.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return c.toDataURL('image/png');
+      }
+
+      const root = document.documentElement.style;
+      root.setProperty('--linen', `url(${paintLinen(128, [52, 37, 27], 22)})`);
+      root.setProperty('--linen-light', `url(${paintLinen(128, [236, 236, 236], 26)})`);
+      root.setProperty('--afterglow', `url(${paintAfterglow(900, 1160)})`);
+      root.setProperty('--paper-grain', `url(${paintGrain(160)})`);
+
+      // ---- Building the album ----
+      const PIXELS = { '4/3': [800, 600], '3/4': [600, 800], '1/1': [700, 700] };
+
+      function photoHTML(ph) {
+        const [w, h] = PIXELS[ph.r];
+        const caption = ph.caption ? `<figcaption>${ph.caption}</figcaption>` : '';
+        // Polaroids carry their caption inside the frame; other mounts write it underneath
+        return `
+          <figure class="photo mount-${ph.mount}" data-slot="${ph.id}"
+                  style="left:${ph.x}%; top:${ph.y}%; width:${ph.w}%; --rot:${ph.rot}deg; --ratio:${ph.r}">
+            <div class="photo-frame">
+              <img src="${photoSrc(ph.id, w, h)}" alt="" loading="lazy" decoding="async">
+              ${ph.mount === 'polaroid' ? caption : ''}
+            </div>
+            ${ph.mount === 'polaroid' ? '' : caption}
+          </figure>`;
+      }
+
+      function pageHTML(p) {
+        const collage = `<div class="collage">${(p.photos || []).map(photoHTML).join('')}</div>`;
+        if (p.type === 'photos') return collage;
+        return `${collage}
+          <div class="page ${p.type}">
+            ${p.no ? `<span class="page-no reveal" style="--i:0">${p.no}</span>` : ''}
+            <h2 class="reveal" style="--i:1">${p.title}</h2>
+            <p class="reveal" style="--i:2">${p.body}</p>
+            ${p.button ? `<button class="page-cta reveal" type="button" style="--i:3" data-href="${p.href || ''}">${p.button}</button>` : ''}
+          </div>`;
+      }
+
+      const el = (cls, html = '') => {
+        const d = document.createElement('div');
+        d.className = cls;
+        d.innerHTML = html;
+        return d;
+      };
+
+      // Leaf 0 is the cover; leaf i's front is spread i-1's right page and its back
+      // is spread i's left page. The last right page sits on the back board.
+      const leaves = [];
+      const spreadFaces = ALBUM.map(() => []);
+
+      const cover = el('leaf cover');
+      const coverFront = el('face front cover-front', `
+        <div class="cover-art">
+          <div class="cover-plate"><svg aria-hidden="true"><use href="#glyph-album" /></svg></div>
+          <div class="cover-word">
+            <svg class="cover-wordmark" role="img" aria-label="Momento"><use href="#wordmark" /></svg>
+          </div>
+        </div>`);
+      const coverBack = el('face back cover-back');
+      const insidePaper = el('paper', pageHTML(ALBUM[0].left));
+      coverBack.append(insidePaper);
+      cover.append(coverFront, coverBack);
+      leaves.push(cover);
+      spreadFaces[0].push(insidePaper);
+
+      for (let i = 1; i < n; i++) {
+        const leaf = el('leaf');
+        const front = el('face front paper', pageHTML(ALBUM[i - 1].right));
+        const back = el('face back paper', pageHTML(ALBUM[i].left));
+        leaf.append(front, back);
+        leaves.push(leaf);
+        spreadFaces[i - 1].push(front);
+        spreadFaces[i].push(back);
+      }
+
+      const lastPage = el('page-static face front paper', pageHTML(ALBUM[n - 1].right));
+      spreadFaces[n - 1].push(lastPage);
+
+      // Punched holes by the spine: right pages have them on the left edge, left pages on the right
+      const holes = (side) => `<div class="holes ${side}">${'<span></span>'.repeat(12)}</div>`;
+      insidePaper.insertAdjacentHTML('beforeend', holes('right'));
+      lastPage.insertAdjacentHTML('beforeend', holes('left'));
+      for (const leaf of leaves.slice(1)) {
+        leaf.querySelector('.front').insertAdjacentHTML('beforeend', holes('left'));
+        leaf.querySelector('.back').insertAdjacentHTML('beforeend', holes('right'));
+      }
+      const board = el('board');
+      const edge = el('edge');
+      album.style.setProperty('--leaves', n);
+      const rings = el('rings', '<span class="ring"></span>'.repeat(12));
+
+      const thicks = [el('thick')];
+      cover.append(thicks[0]);
+      board.style.transform = `translateZ(${-(n + 1) * STEP}px)`;
+      lastPage.style.transform = `translateZ(${-n * STEP}px)`;
+      rings.style.transform = `translateZ(${(n + 3) * STEP}px)`;
+      album.append(board, lastPage, edge, ...leaves, rings);
+
+      // ---- Floating photos ----
+      // Polaroids orbit the album (which sits right of centre in the hero), clear of the
+      // copy on the left; they reuse photos from the album
+      const FLOATERS = [
+        { photo: 2, x: 48, y: 15, size: 96, depth: 0.6, rot: -7, front: false },
+        { photo: 7, x: 77, y: 18, size: 122, depth: 1.1, rot: 6, front: true },
+        { photo: 11, x: 83, y: 55, size: 108, depth: 1.2, rot: -5, front: true },
+        { photo: 6, x: 46, y: 64, size: 92, depth: 0.8, rot: 8, front: true },
+        { photo: 12, x: 66, y: 77, size: 82, depth: 0.5, rot: -10, front: false },
+      ];
+      const floaters = FLOATERS.map((f) => {
+        const d = el('floater', `<img src="${photoSrc(f.photo, 400, 400)}" alt="">`);
+        d.style.cssText = `--size:${f.size}px; left:${f.x}%; top:${f.y}%`;
+        document.querySelector(f.front ? '.floaters-front' : '.floaters-back').append(d);
+        return { ...f, el: d, rx: 0, ry: 0, cx: 0, cy: 0 };
+      });
+
+      // Polaroids the album bursts into as it dissolves, fanned out around the cover
+      const shards = Array.from({ length: 16 }, (_, i) => {
+        const d = document.createElement('div');
+        d.className = 'shard';
+        d.innerHTML = `<img src="${photoSrc((i % 13) + 1, 300, 300)}" alt="">`;
+        d.style.setProperty('--w', `${70 + ((i * 37) % 60)}px`);
+        stage.append(d);
+        return {
+          el: d,
+          a: ((i / 16) * 360 + ((i * 53) % 20) - 10) * (Math.PI / 180),
+          d: 0.45 + ((i * 29) % 40) / 100,
+          rot: ((i * 71) % 80) - 40,
+          delay: ((i * 13) % 25) / 100,
+        };
+      });
+
+      // Layout is read once (and on resize), never inside the frame loop.
+      // offsetLeft ignores transforms, so these are the resting centres.
+      let W = 0;
+      function measure() {
+        W = album.offsetWidth;
+        for (const f of floaters) {
+          f.cx = f.el.offsetLeft + f.el.offsetWidth / 2;
+          f.cy = f.el.offsetTop + f.el.offsetHeight / 2;
+        }
+      }
+      measure();
+      addEventListener('resize', measure);
+
+      // ---- Timeline ----
+      const turnStart = (k) => T.hero + T.intro + k * (T.turn + T.hold);
+      const total = turnStart(n) + T.close + T.rise;
+      story.style.height = `${(total + 1) * 100}vh`;
+
+      const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+      const ease = (v) => (v < 0.5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2);
+      const lerp = (a, b, t) => a + (b - a) * t;
+
+      // Scroll targets for the buttons
+      // Buttons glide the page with a slow ease-in-out instead of the browser's quick
+      // smooth scroll, so "Open the album" plays as one unhurried sequence. Any wheel,
+      // touch or key input hands control back to the visitor.
+      let glide = 0, gliding = false, glideStart = 0;
+      function stopGlide() { cancelAnimationFrame(glide); gliding = false; }
+      function scrollToScreens(s, ms = 6000) {
+        const from = scrollY, to = s * innerHeight;
+        stopGlide();
+        if (still.matches) { scrollTo(0, to); return; }
+        gliding = true;
+        glideStart = performance.now();
+        // Sine ease-out: full speed from the first frame, so the click visibly starts
+        // the sequence (the album's own easing already softens the start), then a
+        // long gentle settle onto the first spread
+        const step = (now) => {
+          const p = Math.min(Math.max((now - glideStart) / ms, 0), 1);
+          scrollTo(0, from + (to - from) * Math.sin((Math.PI / 2) * p));
+          if (p < 1) glide = requestAnimationFrame(step);
+          else gliding = false;
+        };
+        glide = requestAnimationFrame(step);
+      }
+      // Wheel, touch or keys hand control back to the visitor, except in the first
+      // moment after the click, when a trackpad's leftover momentum would cancel it
+      for (const type of ['wheel', 'touchstart', 'keydown']) {
+        addEventListener(type, () => {
+          if (gliding && performance.now() - glideStart > 700) stopGlide();
+        }, { passive: true });
+      }
+      function openAlbum() {
+        // Nothing moves during the hero's first stretch of scroll, so jump past it:
+        // the album starts turning on the very frame the slider completes
+        if (scrollY < T.hero * innerHeight) {
+          scrollTo(0, T.hero * innerHeight);
+          screens = T.hero;
+        }
+        scrollToScreens(turnStart(0) + T.turn + 0.05);
+      }
+
+      // Buttons inside the album scroll to their section; until it's built, they
+      // carry on past the album to where it will be
+      // Hit-testing inside the 3D stack is unreliable, so the click is also matched
+      // against the button's on-screen box
+      album.addEventListener('click', (e) => {
+        const btn = e.target.closest('.page-cta[data-href]') ||
+          [...album.querySelectorAll('.page-cta[data-href]')].find((b) => {
+            const r = b.getBoundingClientRect();
+            return r.width && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+          });
+        if (!btn) return;
+        const target = btn.dataset.href && document.querySelector(btn.dataset.href);
+        const top = target
+          ? target.getBoundingClientRect().top + scrollY
+          : story.offsetTop + story.offsetHeight - innerHeight;
+        scrollTo({ top, behavior: still.matches ? 'auto' : 'smooth' });
+      });
+
+      // ---- Slide to open ----
+      // Drag the book knob along the track (or click / press Enter or Space). Past
+      // 55% it completes and opens the album; short of that it springs back.
+      const slide = document.querySelector('.slide');
+      const knob = slide.querySelector('.slide-knob');
+      let travel = 0, knobX = 0, dragFrom = null, moved = false, settle = 0;
+
+      const measureSlide = () => { travel = slide.clientWidth - knob.offsetWidth - 2 * knob.offsetLeft; };
+      measureSlide();
+      addEventListener('resize', measureSlide);
+
+      function setKnob(x) {
+        knobX = Math.min(Math.max(x, 0), travel);
+        slide.style.setProperty('--x', `${knobX}px`);
+        slide.style.setProperty('--p', (knobX / travel).toFixed(3));
+      }
+
+      // Eases the knob to a target, then runs `done`
+      function animateKnob(to, ms, done) {
+        cancelAnimationFrame(settle);
+        const from = knobX, start = performance.now();
+        const step = (now) => {
+          const p = still.matches ? 1 : Math.min((now - start) / ms, 1);
+          setKnob(from + (to - from) * (1 - Math.pow(1 - p, 3)));
+          if (p < 1) settle = requestAnimationFrame(step);
+          else if (done) done();
+        };
+        settle = requestAnimationFrame(step);
+      }
+
+      function complete() {
+        animateKnob(travel, 320, () => {
+          openAlbum();
+          // Reset quietly once the hero has faded out of view
+          setTimeout(() => animateKnob(0, 10), 1600);
+        });
+      }
+
+      slide.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        cancelAnimationFrame(settle);
+        dragFrom = e.clientX - knobX;
+        moved = false;
+        slide.setPointerCapture(e.pointerId);
+      });
+      slide.addEventListener('pointermove', (e) => {
+        if (dragFrom === null) return;
+        const x = e.clientX - dragFrom;
+        if (Math.abs(x - knobX) > 2) moved = true;
+        if (moved) { slide.classList.add('is-dragging'); setKnob(x); }
+      });
+      const release = () => {
+        if (dragFrom === null) return;
+        dragFrom = null;
+        slide.classList.remove('is-dragging');
+        if (!moved || knobX > travel * 0.55) complete();   // a plain click opens too
+        else animateKnob(0, 380);
+      };
+      slide.addEventListener('pointerup', release);
+      slide.addEventListener('pointercancel', () => { dragFrom = null; slide.classList.remove('is-dragging'); animateKnob(0, 380); });
+      slide.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); complete(); }
+      });
+      // Jumping across the album (from the nav or the logo) skips the page flips: the
+      // page cuts to just before the close, or to the closed book, and glides from there
+      const introEnd = T.hero + T.intro;
+      window.momentoAlbum = {
+        closeAt: turnStart(n),
+        introEnd,
+        end: total,
+        skip(s) { stopGlide(); scrollTo({ top: s * innerHeight, behavior: 'instant' }); screens = s; },
+        glide: (s, ms) => scrollToScreens(s, ms),
+      };
+
+      // ---- Reading controls: arrows, arrow keys, and dragging a page edge ----
+      // Each spread "rests" just after its turn ends; the controls move between rests
+      const rest = (i) => turnStart(i) + T.turn + 0.05;
+      const nearestSpread = () => {
+        const s = scrollY / innerHeight;
+        let best = 0;
+        for (let i = 1; i < n; i++) if (Math.abs(rest(i) - s) < Math.abs(rest(best) - s)) best = i;
+        return best;
+      };
+      function goSpread(i, ms = 1400) {
+        if (i < 0) return scrollToScreens(introEnd, ms);                 // close the cover
+        if (i >= n) return scrollToScreens(total, ms + 800);             // close and move on
+        scrollToScreens(rest(i), ms);
+      }
+      let turning = false;
+
+      document.querySelector('.page-arrows').addEventListener('click', (e) => {
+        const b = e.target.closest('.pa');
+        if (b) goSpread(nearestSpread() + Number(b.dataset.dir));
+      });
+      addEventListener('keydown', (e) => {
+        if (!stage.classList.contains('is-reading') || e.target.closest('input, textarea')) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); goSpread(nearestSpread() + 1); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); goSpread(nearestSpread() - 1); }
+      });
+
+      // Dragging across a full page width turns one page; release settles on the
+      // nearest spread, leaning the way you dragged
+      for (const grip of document.querySelectorAll('.page-grip')) {
+        let from = null;
+        grip.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0) return;
+          stopGlide();
+          from = { x: e.clientX, s: scrollY / innerHeight, i: nearestSpread() };
+          turning = true;
+          stage.classList.add('is-turning');
+          grip.setPointerCapture(e.pointerId);
+        });
+        grip.addEventListener('pointermove', (e) => {
+          if (!from) return;
+          const ds = (-(e.clientX - from.x) / W) * T.turn;
+          const lo = rest(0) - T.turn, hi = rest(n - 1) + T.turn * 0.6;
+          scrollTo(0, Math.min(Math.max(from.s + ds, lo), hi) * innerHeight);
+        });
+        grip.addEventListener('pointerup', (e) => {
+          if (!from) return;
+          const moved = scrollY / innerHeight - from.s;
+          const step = Math.abs(moved) > T.turn * 0.25 ? Math.sign(moved) : 0;
+          const target = from.i + step;
+          from = null;
+          turning = false;
+          stage.classList.remove('is-turning');
+          goSpread(target, 700);
+        });
+        grip.addEventListener('pointercancel', () => {
+          if (!from) return;
+          const target = from.i;
+          from = null;
+          turning = false;
+          stage.classList.remove('is-turning');
+          goSpread(target, 500);
+        });
+      }
+
+      // The ember inside pressed headings follows the pointer across the letters
+      addEventListener('pointermove', (e) => {
+        const ink = e.target.closest?.('.ink');
+        if (!ink) return;
+        const r = ink.getBoundingClientRect();
+        ink.style.setProperty('--ix', `${((e.clientX - r.left) / r.width) * 100}%`);
+      }, { passive: true });
+
+      // ---- Pointer ----
+      const pointer = { x: innerWidth / 2, y: innerHeight / 2, nx: 0, ny: 0 };
+      const tilt = { x: 0, y: 0 };
+      addEventListener('pointermove', (e) => {
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
+        pointer.nx = e.clientX / innerWidth - 0.5;
+        pointer.ny = e.clientY / innerHeight - 0.5;
+      }, { passive: true });
+
+      // ---- Frame loop ----
+      let screens = scrollY / innerHeight;
+      let activeSpread = -1;
+      let last = performance.now();
+
+      function frame() {
+        const now = performance.now();
+        const dt = Math.min(Math.max((now - last) / 1000, 0), 0.1);
+        last = now;
+        const k = (rate) => (still.matches ? 1 : 1 - Math.exp(-dt * rate));
+
+        // Scroll is smoothed so page turns glide even with a notched wheel
+        // Heavily eased: even a fast flick of the wheel plays out as a slow page turn
+        // (The button's glide is already eased, so it is followed more closely.)
+        // (The pointer drives page drags directly, so those follow almost exactly.)
+        screens += (scrollY / innerHeight - screens) * k(turning ? 16 : gliding ? 7 : 2.6);
+        tilt.x += (pointer.nx - tilt.x) * k(4);
+        tilt.y += (pointer.ny - tilt.y) * k(4);
+
+        const intro = ease(clamp01((screens - T.hero) / T.intro));
+        // After the last spread the whole book swings shut (every leaf together, so the
+        // stack closes as one), then rises away as How it works floats up beneath it
+        const close = ease(clamp01((screens - turnStart(n)) / T.close));
+        const rise = ease(clamp01((screens - turnStart(n) - T.close) / T.rise));
+        const turns = ALBUM.map((_, i) => ease(clamp01((screens - turnStart(i)) / T.turn)) * (1 - close));
+        const open = turns[0];
+        const time = now / 1000;
+        const motion = still.matches ? 0 : 1;
+
+        // Hero copy fades as the album takes over
+        for (const h of heroEls) {
+          h.style.opacity = 1 - intro;
+          h.style.translate = `0 ${-intro * 30}px`;
+          h.style.pointerEvents = intro > 0.5 ? 'none' : '';
+        }
+
+        // Album pose: tilted and floating right of centre in the hero (balancing the copy),
+        // square to the reader and centred once open. Closed, it's centred on the cover;
+        // open, on the spine.
+        const hero = 1 - intro;
+        const bob = Math.sin(time * 2 * Math.PI / 6) * 12 * hero * motion;
+        // Flat once open: an untilted spread rasterises crisply, so type and photos stay sharp
+        const rx = lerp(lerp(12, 6, intro), 0, open) - tilt.y * 14 * hero * motion;
+        const ry = lerp(-22, 0, intro) + tilt.x * 22 * hero * motion;
+        const rz = lerp(-7, 0, intro);
+        const sc = lerp(0.86, 1, intro) * (1 + rise * 0.14);
+        const cx = (W / 2) * (1 - open);
+        const shift = innerWidth > 900 ? innerWidth * 0.12 * hero : 0;
+        // Once shut, the book dissolves: it swells, blurs and fades while its photos burst
+        // out. Fading flattens the 3D stack, so the inside leaves are hidden first (shut),
+        // leaving only the cover to paint.
+        album.classList.toggle('is-shut', close > 0.98);
+        const lift = -rise * 40;
+        album.style.transformOrigin = `${cx}px 50%`;
+        album.style.transform =
+          `translate3d(${shift - cx}px, ${bob + lift}px, 0) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg) scale(${sc})`;
+        album.style.opacity = rise > 0 ? (1 - rise).toFixed(3) : '';
+        album.style.filter = rise > 0 ? `blur(${(rise * 14).toFixed(1)}px)` : '';
+
+        for (const s of shards) {
+          const p = clamp01((rise - s.delay) / (1 - s.delay));
+          const e = 1 - Math.pow(1 - p, 3);
+          const reach = s.d * Math.hypot(innerWidth, innerHeight) * 0.5 * e;
+          const fade = p <= 0 ? 0 : p < 0.2 ? p / 0.2 : 1 - (p - 0.2) / 0.8;
+          s.el.style.opacity = fade.toFixed(3);
+          s.el.style.transform =
+            `translate(-50%, -50%) translate(${Math.cos(s.a) * reach}px, ${Math.sin(s.a) * reach}px) rotate(${s.rot * e}deg) scale(${0.35 + e * 0.85})`;
+        }
+
+        // Leaves turn around the rings
+        // Board thickness and the page block only read when the album is closed and
+        // tilted; once it lies open and flat they turn edge-on and show as hairlines
+        const side = Math.max(0, 1 - open * 1.4).toFixed(3);
+        edge.style.opacity = side;
+        for (const t of thicks) t.style.opacity = side;
+
+        leaves.forEach((leaf, i) => {
+          const a = turns[i] * 180;
+          leaf.style.transform = `rotateY(${-a}deg) translateZ(${-i * STEP}px)`;
+          leaf.style.setProperty('--shade-front', (Math.min(a, 90) / 90 * 0.9).toFixed(3));
+          leaf.style.setProperty('--shade-back', (Math.min(180 - a, 90) / 90 * 0.9).toFixed(3));
+        });
+
+        // The spread reads itself in as its page settles
+        let s = -1;
+        for (let i = 0; i < n; i++) if (turns[i] > 0.8) s = i;
+        if (s !== activeSpread) {
+          spreadFaces.forEach((faces, i) => faces.forEach((f) => f.classList.toggle('is-read', i === s)));
+          activeSpread = s;
+          if (s >= 0) pageCount.textContent = `${s + 1} of ${n}`;
+        }
+        stage.classList.toggle('is-reading', turning || (open > 0.95 && close < 0.02));
+
+        // Floating photos: bob, parallax, dodge the pointer, then scatter as the album opens
+        for (const f of floaters) {
+          const dx = f.cx - pointer.x, dy = f.cy - pointer.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const force = Math.max(0, 1 - dist / 280) * 70 * motion;
+          f.rx += ((dx / dist) * force - f.rx) * k(6);
+          f.ry += ((dy / dist) * force - f.ry) * k(6);
+          const scatterX = (f.x - 50) * 0.01 * innerWidth * intro * 0.6;
+          const scatterY = (f.y - 50) * 0.01 * innerHeight * intro * 0.6;
+          const px = tilt.x * 40 * f.depth * motion, py = tilt.y * 40 * f.depth * motion;
+          const fb = Math.sin(time * 2 * Math.PI / (5 + f.depth * 3) + f.x) * 10 * motion;
+          f.el.style.transform =
+            `translate(${f.rx + px + scatterX}px, ${f.ry + py + fb + scatterY}px) rotate(${f.rot + fb * 0.4}deg)`;
+          f.el.style.opacity = 1 - intro;
+        }
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
+  </script>
+
+  <script>
+    // Liquid glass refraction. Apple ships Liquid Glass only as native APIs (SwiftUI
+    // glassEffect, UIKit UIGlassEffect); on the web the closest match is an SVG
+    // displacement filter used as a backdrop-filter, which only Chromium renders.
+    // Other browsers keep the frosted glass from the CSS.
+    (() => {
+      const chromium = navigator.userAgentData?.brands?.some((b) => b.brand === 'Chromium');
+      if (!chromium) return;
+
+      const NS = 'http://www.w3.org/2000/svg';
+      const defs = document.createElementNS(NS, 'svg');
+      defs.setAttribute('width', '0');
+      defs.setAttribute('height', '0');
+      defs.setAttribute('aria-hidden', 'true');
+      defs.style.position = 'absolute';
+      document.body.append(defs);
+
+      // Displacement map for a rounded rect: neutral (no bend) in the middle, and
+      // within `bezel` px of the rim each pixel samples from further inside, so the
+      // backdrop appears drawn out toward the edge like a convex lens.
+      function lensMap(w, h, radius, bezel) {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        const hw = w / 2, hh = h / 2;
+        const r = Math.min(radius, hw, hh);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const px = x + 0.5 - hw, py = y + 0.5 - hh;
+            const qx = Math.abs(px) - (hw - r), qy = Math.abs(py) - (hh - r);
+            // Signed distance to the rounded rect (negative inside)
+            const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+            let dx = 0, dy = 0;
+            if (-d < bezel && d < 0) {
+              let nx, ny;
+              if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); nx = qx / l; ny = qy / l; }
+              else if (qx > qy) { nx = 1; ny = 0; }
+              else { nx = 0; ny = 1; }
+              nx *= Math.sign(px) || 1;
+              ny *= Math.sign(py) || 1;
+              const m = Math.pow(1 + d / bezel, 1.6);   // 0 at the bezel's inner edge, 1 at the rim
+              dx = -nx * m;
+              dy = -ny * m;
+            }
+            const i = (y * w + x) * 4;
+            img.data[i] = 128 + dx * 127;
+            img.data[i + 1] = 128 + dy * 127;
+            img.data[i + 2] = 128;
+            img.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return c.toDataURL('image/png');
+      }
+
+      // Three passes at slightly different strengths, one per colour channel, give the
+      // faint rainbow fringe real glass has at its edge
+      const channel = (keep) => {
+        const m = ['0 0 0 0 0', '0 0 0 0 0', '0 0 0 0 0', '0 0 0 1 0'];
+        m[keep] = ['1 0 0 0 0', '0 1 0 0 0', '0 0 1 0 0'][keep];
+        return m.join('  ');
+      };
+
+      let count = 0;
+      function refract(el) {
+        const id = `liquid-glass-${++count}`;
+        const filter = document.createElementNS(NS, 'filter');
+        filter.setAttribute('id', id);
+        filter.setAttribute('x', '0');
+        filter.setAttribute('y', '0');
+        filter.setAttribute('filterUnits', 'userSpaceOnUse');
+        filter.setAttribute('color-interpolation-filters', 'sRGB');
+        defs.append(filter);
+
+        const update = () => {
+          const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+          if (!w || !h) return;
+          const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+          const bezel = Math.min(20, Math.min(w, h) * 0.42);
+          const scale = Math.min(44, Math.min(w, h) * 0.85);
+          filter.setAttribute('width', w);
+          filter.setAttribute('height', h);
+          filter.innerHTML = `
+            <feImage href="${lensMap(w, h, radius, bezel)}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map" />
+            ${[1, 0.93, 0.86].map((s, i) => `
+              <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale * s}" xChannelSelector="R" yChannelSelector="G" result="d${i}" />
+              <feColorMatrix in="d${i}" type="matrix" values="${channel(i)}" result="c${i}" />`).join('')}
+            <feComposite in="c0" in2="c1" operator="arithmetic" k2="1" k3="1" result="rg" />
+            <feComposite in="rg" in2="c2" operator="arithmetic" k2="1" k3="1" />`;
+          const value = `blur(1.5px) url(#${id}) saturate(170%)`;
+          el.style.backdropFilter = value;
+          el.style.webkitBackdropFilter = value;
+          el.classList.add('is-refracting');
+        };
+        new ResizeObserver(update).observe(el);
+      }
+
+      document.querySelectorAll('.glass').forEach(refract);
+    })();
+  </script>
+
+  <script>
+    // How it works and Features
+    (() => {
+      const still = matchMedia('(prefers-reduced-motion: reduce)');
+
+      // Panels float up the first time they come into view
+      const io = new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
+      }, { threshold: 0.12 });
+      document.querySelectorAll('.rise-in, .seam').forEach((el) => io.observe(el));
+
+      // Header veil once the hero is behind us
+      const header = document.querySelector('.header');
+      const hiwTop = () => document.querySelector('.hiw').getBoundingClientRect().top;
+      const veil = () => header.classList.toggle('is-veiled', hiwTop() < 90);
+      addEventListener('scroll', veil, { passive: true });
+      veil();
+
+      // Host switches
+      for (const sw of document.querySelectorAll('.sw')) {
+        sw.addEventListener('click', () => sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') !== 'true'));
+      }
+
+      // FAQ: one answer open at a time
+      const qas = [...document.querySelectorAll('.qa')];
+      for (const qa of qas) {
+        qa.querySelector('button').addEventListener('click', () => {
+          const opening = !qa.classList.contains('is-open');
+          for (const other of qas) {
+            other.classList.toggle('is-open', other === qa && opening);
+            other.querySelector('button').setAttribute('aria-expanded', other === qa && opening);
+          }
+        });
+      }
+
+      // Live event counters tick up the first time the card is seen
+      const counters = [...document.querySelectorAll('[data-count]')];
+      new IntersectionObserver((entries, obs) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        obs.disconnect();
+        const start = performance.now();
+        const tick = (now) => {
+          const p = still.matches ? 1 : Math.min((now - start) / 1600, 1);
+          const e = 1 - Math.pow(1 - p, 3);
+          for (const c of counters) c.textContent = Math.round(Number(c.dataset.count) * e);
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }, { threshold: 0.4 }).observe(document.querySelector('.live'));
+
+      // ---- QR code: three finder squares and a fixed pseudo-random pattern ----
+      const qr = document.querySelector('.qr');
+      const N = 25;
+      let cells = '', seed = 7;
+      const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+      const finder = (x, y) => `<path d="M${x} ${y}h7v7h-7zM${x + 1} ${y + 1}v5h5v-5z" fill-rule="evenodd"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3"/>`;
+      const inFinder = (x, y) => (x < 8 && y < 8) || (x > N - 9 && y < 8) || (x < 8 && y > N - 9);
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        if (!inFinder(x, y) && rand() > 0.52) cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+      }
+      qr.innerHTML = `<g fill="#100A06">${finder(0, 0)}${finder(N - 7, 0)}${finder(0, N - 7)}${cells}</g>`;
+
+      // ---- How it works: scroll picks the step; the phone shows its screen ----
+      const hiw = document.querySelector('.hiw');
+      const stepsEl = hiw.querySelector('.steps');
+      const steps = [...hiw.querySelectorAll('.step')];
+      const screens = [...hiw.querySelectorAll('.scr')];
+      const wrap = hiw.querySelector('.phone-wrap');
+      const panel = hiw.querySelector('.hiw-panel');
+      let current = -1;
+
+      function setStep(i) {
+        if (i === current) return;
+        current = i;
+        steps.forEach((s, k) => { s.classList.toggle('is-on', k === i); s.classList.toggle('is-done', k < i); });
+        screens.forEach((s, k) => { s.classList.toggle('is-on', k === i); s.classList.toggle('is-past', k < i); });
+        stepsEl.style.setProperty('--rail', (i / (steps.length - 1)).toFixed(3));
+      }
+
+      function progress() {
+        const span = hiw.offsetHeight - innerHeight;
+        const p = Math.min(Math.max(-hiw.getBoundingClientRect().top / span, 0), 0.999);
+        setStep(Math.floor(p * steps.length));
+      }
+
+      let queued = false;
+      addEventListener('scroll', () => {
+        if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; progress(); }); }
+      }, { passive: true });
+
+      // Clicking a step scrolls to the middle of its stretch
+      hiw.addEventListener('click', (e) => {
+        const b = e.target.closest('.step button');
+        if (!b) return;
+        const i = Number(b.dataset.i);
+        const span = hiw.offsetHeight - innerHeight;
+        scrollTo({ top: hiw.offsetTop + ((i + 0.5) / steps.length) * span, behavior: still.matches ? 'auto' : 'smooth' });
+      });
+
+      // Phone scales to fit the panel's height
+      function fitPhone() {
+        const pad = parseFloat(getComputedStyle(panel).paddingTop) * 2;
+        const s = Math.min(1, (panel.clientHeight - pad) / 556);
+        wrap.style.setProperty('--s', s.toFixed(3));
+      }
+      addEventListener('resize', fitPhone);
+      fitPhone();
+      progress();
+
+      // ---- Features: the sharing-zone slider ----
+      const map = document.querySelector('.zone-map');
+      const range = document.getElementById('zoneR');
+      const out = document.getElementById('zoneOut');
+      const countIn = document.getElementById('zoneIn');
+      const guestsEl = map.querySelector('.zone-guests');
+
+      // Same curve as the app: 25 m at the left end to 1 km at the right
+      const metres = (v) => Math.round((25 * Math.pow(40, v / 100)) / 5) * 5;
+      const label = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`);
+      // Map radius as a share of the map's half-width
+      const radius = (v) => 0.12 + (v / 100) * 0.72;
+
+      // Each guest stands at a slider position (their distance) and an angle
+      const GUESTS = [
+        { v: 10, a: 40, p: 'photos/02.jpg' }, { v: 22, a: 200, p: 'photos/12.jpg' },
+        { v: 31, a: 120, p: 'photos/13.jpg' }, { v: 38, a: 300, p: 'photos/07.jpg' },
+        { v: 52, a: 15, p: 'photos/04.jpg' }, { v: 63, a: 160, p: 'photos/01.jpg' },
+        { v: 74, a: 250, p: 'photos/09.jpg' }, { v: 86, a: 95, p: 'photos/05.jpg' },
+        { v: 96, a: 330, p: 'photos/11.jpg' },
+      ];
+      document.getElementById('zoneAll').textContent = GUESTS.length;
+      const guests = GUESTS.map((g) => {
+        const d = document.createElement('span');
+        d.className = 'guest';
+        d.style.backgroundImage = `url(${g.p})`;
+        d.innerHTML = '<small></small>';
+        guestsEl.append(d);
+        return { ...g, el: d, tag: d.firstChild };
+      });
+
+      function update() {
+        const v = Number(range.value);
+        const half = map.clientWidth / 2;
+        map.style.setProperty('--r', `${radius(v) * half}px`);
+        range.style.setProperty('--fill', `${v}%`);
+        out.textContent = label(metres(v));
+        let n = 0;
+        for (const g of guests) {
+          const r = radius(g.v) * half, a = (g.a * Math.PI) / 180;
+          g.el.style.setProperty('--gx', `${Math.cos(a) * r}px`);
+          g.el.style.setProperty('--gy', `${Math.sin(a) * r}px`);
+          const inside = g.v <= v;
+          g.el.classList.toggle('is-in', inside);
+          if (inside) n++;
+          else g.tag.textContent = `${label(metres(g.v) - metres(v))} out`;
+        }
+        countIn.textContent = n;
+      }
+      range.addEventListener('input', update);
+      addEventListener('resize', update);
+      update();
+    })();
+  </script>
+</body>
+</html>
