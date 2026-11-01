@@ -1,2 +1,1 @@
-# new-repository
-Created by GitHub Copilot
+Ts is genuinely ahh
